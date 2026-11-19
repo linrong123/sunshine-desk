@@ -26,7 +26,7 @@
 | `src/globals.*`、`src/platform/common.h`、各平台 capture 签名及测试替身 | `display_cursor` 与 capture 的 `cursor` 参数为 `std::atomic_bool` | 上游新增的 capture 实现（本次合并新增 macOS ScreenCaptureKit 路径）和测试里的 `display_t` 替身（本次为 `tests/unit/platform/linux/test_display_geometry.cpp`、`tests/unit/platform/macos/test_display_helpers.mm`）须同步改签名，只改签名、不删测试；合并后 `grep -rn "capture(.*, bool \*" src tests` 应无结果；见下文取舍 |
 | `office/display_scale.*`、`office/windows/display_scale.cpp` | 捕获 source 的真实系统 DPI、严格参数、随机目标令牌、串行读写与读回 | Windows 非公开 -3/-4 布局和 effective DPI 核验必须同时有效；未知值拒绝，不能 clamp 或改其他显示器；保留 mock/TLS 测试 |
 | `cmake/compile_definitions/common.cmake` | 把 office 源码加入公共构建清单 | Windows 以外不宣告 DPI 能力、不调用 Windows API；新符号必须完整 Doxygen 文档化 |
-| `dockle.toml` | `[targets.doxygen] inputs` 逐个列入 office 源文件 | 上游已用 dockle 取代 `docs/Doxyfile`，严格模式（警告即失败）随 `BUILD_DOCS=ON` 在 Windows CI 运行；新增 office 源文件要同时加到这里，不整目录加入以免中文 Markdown 进入文档构建 |
+| `dockle.toml` | `[targets.doxygen] inputs` 逐个列入 office 源文件 | 上游已用 dockle 取代 `docs/Doxyfile`；`dockle_add_docs(docs TARGETS docs)` 未加 `ALL`，`ninja -C build` 不构建文档，上游只在 Read the Docs（`.readthedocs.yaml`）跑严格文档构建，因此 office CI 目前**不**执行 Doxygen 检查，需手动构建 `docs` 目标核对；新增 office 源文件要同时加到这里，不整目录加入以免中文 Markdown 进入文档构建 |
 | `office/windows` | 复用 MSI 的干净安装包装、只写候选的配置工具 | 不擅自安装 VDD、覆盖现有配置或重启 |
 | `.github/workflows/ci-windows.yml` | 去掉 ARM64 矩阵项；测试步骤 `set -euo pipefail`；上传测试 XML | 其余上游 workflow 保持原文件，见下文 |
 | `.github/workflows/office-*.yml` | 办公自有 workflow | 不传发布或签名密钥，只读权限 |
