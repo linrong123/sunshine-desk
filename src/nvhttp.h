@@ -368,7 +368,7 @@ namespace nvhttp {
    */
   namespace test_support {
     /**
-     * @brief Construct a loopback-only cursor endpoint using production TLS authorization and handling.
+     * @brief Construct loopback-only Office endpoints using production TLS authorization and handling.
      * @param cert Test server certificate file.
      * @param key Test server private key file.
      * @return Server with an ephemeral port, ready to start in the test thread.

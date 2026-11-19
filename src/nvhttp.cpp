@@ -31,6 +31,7 @@
 #include "logging.h"
 #include "network.h"
 #include "nvhttp.h"
+#include "office/display_scale.h"
 #include "office/policy.h"
 #include "platform/common.h"
 #include "process.h"
@@ -1225,6 +1226,9 @@ namespace nvhttp {
     tree.put("root.<xmlattr>.status_code", 200);
     tree.put("root.hostname", config::nvhttp.sunshine_name);
     tree.put("root.OfficeCursorSet", 1);
+#ifdef _WIN32
+    tree.put("root.OfficeDisplayScale", 1);
+#endif
 
     tree.put("root.appversion", VERSION);
     tree.put("root.GfeVersion", GFE_VERSION);
@@ -1303,6 +1307,48 @@ namespace nvhttp {
       tree.put("root.cursorVisible", *visible ? 1 : 0);
     } else {
       tree.put("root.<xmlattr>.status_message", "Expected exactly one visible=0 or visible=1 parameter");
+    }
+    std::ostringstream data;
+    pt::write_xml(data, tree);
+    response->write(data.str());
+    response->close_connection_after_response = true;
+  }
+
+  /**
+   * @brief Read or set real capture-display scaling through paired-client HTTPS only.
+   * @param response GameStream XML response carrying actual values after verified readback.
+   * @param request Parameterless GET or POST with scale and the previously queried displayToken.
+   */
+  void office_display_scale(resp_https_t response, req_https_t request) {
+    const auto args = request->parse_query_string();
+    office::display_scale_result result;
+    try {
+      if (!request->content.string().empty()) {
+        result = {400, "Display scaling requests require an empty body", {}, {}};
+      } else {
+        result = office::request_display_scale(request->method == "POST", {args.begin(), args.end()});
+      }
+    } catch (const std::exception &) {
+      result = {503, "System display scaling is temporarily unavailable", {}, {}};
+    }
+    pt::ptree tree;
+    tree.put("root.<xmlattr>.status_code", result.status);
+    if (result.status == 200 && result.snapshot) {
+      const auto &values = result.snapshot->values;
+      tree.put("root.scale", values.current);
+      tree.put("root.recommended", values.recommended);
+      std::string supported;
+      for (const auto scale : values.supported) {
+        if (!supported.empty()) {
+          supported += ',';
+        }
+        supported += std::to_string(scale);
+      }
+      tree.put("root.supportedScales", supported);
+      tree.put("root.displayToken", result.token);
+    }
+    if (!result.message.empty()) {
+      tree.put("root.message", result.message);
     }
     std::ostringstream data;
     pt::write_xml(data, tree);
@@ -1730,6 +1776,8 @@ namespace nvhttp {
       pair<SunshineHTTPS>(resp, req);
     };
     https_server.resource["^/office/cursor$"]["GET"] = office_cursor;
+    https_server.resource["^/office/display-scale$"]["GET"] = office_display_scale;
+    https_server.resource["^/office/display-scale$"]["POST"] = office_display_scale;
     https_server.resource["^/applist$"]["GET"] = applist;
     https_server.resource["^/appasset$"]["GET"] = appasset;
     https_server.resource["^/launch$"]["GET"] = [&host_audio](auto resp, auto req) {
@@ -1856,6 +1904,8 @@ namespace nvhttp {
       server->verify = verify_paired_client;
       server->on_verify_failed = reject_unpaired_client;
       server->resource["^/office/cursor$"]["GET"] = office_cursor;
+      server->resource["^/office/display-scale$"]["GET"] = office_display_scale;
+      server->resource["^/office/display-scale$"]["POST"] = office_display_scale;
       server->default_resource["GET"] = not_found<SunshineHTTPS>;
       return server;
     }

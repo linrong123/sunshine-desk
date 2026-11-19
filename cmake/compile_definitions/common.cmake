@@ -131,6 +131,9 @@ endif()
 list(APPEND PLATFORM_TARGET_FILES ${NVENC_SOURCES})
 
 set(SUNSHINE_TARGET_FILES
+        "${CMAKE_SOURCE_DIR}/office/display_scale.h"
+        "${CMAKE_SOURCE_DIR}/office/display_scale.cpp"
+        "${CMAKE_SOURCE_DIR}/office/windows/display_scale.cpp"
         "${CMAKE_SOURCE_DIR}/third-party/moonlight-common-c/src/Input.h"
         "${CMAKE_SOURCE_DIR}/third-party/moonlight-common-c/src/Rtsp.h"
         "${CMAKE_SOURCE_DIR}/third-party/moonlight-common-c/src/RtspParser.c"

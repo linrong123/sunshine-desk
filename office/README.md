@@ -44,11 +44,19 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 
 首期支持目标为 Windows Desktop Duplication。其他平台采集后端保留原行为，部分后端并不支持动态光标合成，不应将“接口存在”理解为所有平台均有视觉保证。旧服务器无 capability 或返回 404 时，客户端只提示不支持远端光标控制，不模拟 toggle、不阻止串流。并发配对客户端的最后一次写入生效；单客户端也应串行发送设置请求，避免网络乱序造成旧状态后到。
 
+## Windows 系统显示比例
+
+已新增已配对 HTTPS 上的 `GET /office/display-scale` 和 `POST /office/display-scale?scale=150&displayToken=<读取令牌>`，用于调整捕获显示器的真实 Windows 文字与图标比例。Windows `serverinfo` 宣告 `OfficeDisplayScale=1`；其他平台不宣告，接口返回明确不支持。此能力不改变客户端画面 zoom，不写客户端持久偏好。
+
+读取返回实际 `scale`、`recommended`、逗号分隔的 `supportedScales` 和 32 位小写十六进制 `displayToken`。写请求必须使用读取令牌且比例明确受支持；只在操作系统读回确认后报告成功。仅注册于现有已配对且启用的客户端证书保护的 HTTPS 服务，不新增端口。多显示器无法唯一定位、克隆显示器、自定义或未知 DPI、无控制台权限等情况拒绝操作。
+
+实现使用 Windows 非公开 DisplayConfig DPI 子类型，兼容性存在限制；尚未在真实 Windows 主机上执行此功能验收。详见[协议、实现限制和验收步骤](DISPLAY_SCALE.md)。
+
 ## 验证与交接
 
 - 本地独立策略测试：`clang++ -std=c++17 -Wall -Wextra -Werror -I. office/tests/policy.cpp -o <临时测试程序>`，运行生成程序。
 - `OfficeCursorTlsTest` 通过生产 TLS 服务器与认证回调测试已配对幂等 set、未知/禁用/解除配对拒绝、无证书及明文拒绝；使用环回临时端口和临时合成证书，不启动真实主机服务。
-- 完整 GoogleTest 新增 `tests/unit/test_office.cpp`，检查严格参数及固定运行目录。
+- 完整 GoogleTest 包含 `tests/unit/test_office.cpp` 的固定运行目录与 cursor 参数测试，以及 `test_office_display_scale.cpp` 的 DPI 边界、严格请求、目标令牌、失败与读回测试。`OfficeDisplayScaleTlsTest` 使用生产 TLS 服务和 synthetic DPI backend，验证已配对读取/POST 及未知、禁用、解除配对、缺证书和明文拒绝；测试不修改任何真实显示器比例。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
 - 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。

@@ -18,7 +18,9 @@
 | `src/config.cpp` 与 Web config 默认值 | 默认 ensure_active，分辨率/刷新率 auto；配置解析仍尊重显式值 | 检查 C++ 与 Web 默认一致，不覆盖已配置 disabled/manual |
 | 三个平台 `assets/apps.json` | 新安装 Desktop-only | 上游 config.cpp 仍仅在用户文件不存在时复制模板 |
 | `src/confighttp.cpp` 与 Navbar.vue | 移除应用增删路由/应用精选页面导航，读取固定目录 | 防止上游新增其他应用导入/创建入口；原文件不删 |
-| `src/nvhttp.cpp` | capability、仅已认证 HTTPS cursor set | 不注册到明文 HTTP；保留现有配对和禁用客户端验证 |
+| `src/nvhttp.cpp` | capability、仅已认证 HTTPS cursor set 与显示比例 GET/POST | 不注册到明文 HTTP；保留现有配对和禁用客户端验证 |
+| `office/display_scale.*`、`office/windows/display_scale.cpp` | 捕获 source 的真实系统 DPI、严格参数、随机目标令牌、串行读写与读回 | Windows 非公开 -3/-4 布局和 effective DPI 核验必须同时有效；未知值拒绝，不能 clamp 或改其他显示器；保留 mock/TLS 测试 |
+| `docs/Doxyfile`、公共源码构建清单 | 将 office 源码纳入编译与严格文档检查 | Windows 以外不宣告能力、不调用 Windows API；新符号必须完整文档化 |
 | `src/globals.*`、平台 capture 签名 | bool 改为 atomic_bool | 所有覆盖方法一致，读线程不再访问非原子状态 |
 | `office/windows` | 复用 MSI 的干净安装包装、只写候选的配置工具 | 不擅自安装 VDD、覆盖现有配置或重启 |
 | `.github/workflows` | 上游自动入口增加源仓库条件；独立 office Windows 验证 | 新增上游 workflow 也必须审查，防自动发布/同步/写外部仓库 |
@@ -40,3 +42,9 @@
 ## 当前不实现的功能
 
 自建虚拟显示驱动、静默导入账户或已配对身份、禁用系统锁屏、替换控制台会话迁移、多个独立观看者的独立光标显示、远端光标形状/坐标协议均不在本轮实现范围。VDD 安装与签名验证由可信驱动发行方和 Windows 负责，服务端仅复用上游显示模式管理。
+
+## 显示比例扩展的来源与状态
+
+Windows 私有 DPI packet 布局与标准比例表参考 [imniko/SetDPI](https://github.com/imniko/SetDPI) 的 `DpiHelper.h` / `DpiHelper.cpp`，其 Unlicense 原文保存于 `office/licenses/SetDPI-Unlicense.txt`。此实现保留来源说明，独立补充严格边界校验、捕获目标选择、无身份令牌、effective DPI 交叉核验、配对 HTTPS 授权和失败读回策略。它没有继承参考实现的 clamp 行为。
+
+本轮仅完成源码、独立本地 mock 测试与文档验证；完整 Windows 构建、生产 TLS 新用例和真实 DPI 双端验收在交付时仍需单独记录，不能以 mock 成功代替实机成功。禁止为了验收自动重启、注销或安装驱动，正在串流的主机应先保留当前会话。完整协议与限制见 [DISPLAY_SCALE.md](DISPLAY_SCALE.md)。

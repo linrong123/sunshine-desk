@@ -54,7 +54,8 @@ INPUT = ../README.md \
         building.md \
         contributing.md \
         ../third-party/doxyconfig/docs/source_code.md \
-        ../src
+        ../src \
+        ../office
 
 # extra css
 HTML_EXTRA_STYLESHEET += doc-styles.css

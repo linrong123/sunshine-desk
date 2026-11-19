@@ -4,6 +4,7 @@
  */
 
 #include "../certificate_test_utils.h"
+#include "../display_scale_test_utils.h"
 #include "../tests_common.h"
 
 // standard includes
@@ -242,6 +243,18 @@ protected:
    * @return Response XML status code.
    */
   int request_status(const std::string &target, const std::string &identity = "paired") {
+    return request_xml(target, identity).get<int>("root.<xmlattr>.status_code");
+  }
+
+  /**
+   * @brief Exercise real TLS and XML handling with synthetic credentials and backend state.
+   * @param target Request path and query.
+   * @param identity Synthetic certificate identity, or empty to omit it.
+   * @param method HTTP method.
+   * @param body Optional body used to verify strict empty-body policy.
+   * @return Parsed GameStream response.
+   */
+  boost::property_tree::ptree request_xml(const std::string &target, const std::string &identity = "paired", const std::string &method = "GET", const std::string &body = "") {
     SimpleWeb::Client<SimpleWeb::HTTPS> client {
       std::format("127.0.0.1:{}", port.load()),
       false,
@@ -249,10 +262,10 @@ protected:
       identity.empty() ? "" : (directory / (identity + ".key")).string()
     };
     client.config.timeout = 5;
-    std::istringstream response {client.request("GET", target)->content.string()};
+    std::istringstream response {client.request(method, target, body)->content.string()};
     boost::property_tree::ptree tree;
     boost::property_tree::read_xml(response, tree);
-    return tree.get<int>("root.<xmlattr>.status_code");
+    return tree;
   }
 
   fs::path directory;  ///< Synthetic credentials, removed after every test.
@@ -297,4 +310,68 @@ TEST_F(OfficeCursorTlsTest, MissingCertificateAndPlainHttpCannotReachTheHandler)
   plaintext.config.timeout = 5;
   EXPECT_ANY_THROW(plaintext.request("GET", "/office/cursor?visible=0"));
   EXPECT_TRUE(display_cursor.load());
+}
+
+/** @brief Production TLS endpoint with a synthetic, never physical, DPI backend. */
+class OfficeDisplayScaleTlsTest: public OfficeCursorTlsTest {
+protected:
+  /** @brief Install a fake before starting the shared production HTTPS server. */
+  void SetUp() override {
+    auto backend = std::make_unique<FakeDisplayScaleBackend>();
+    fake = backend.get();
+    office::set_display_scale_backend_for_test(std::move(backend));
+    OfficeCursorTlsTest::SetUp();
+  }
+
+  /** @brief Stop request threads before removing the fake and its target tokens. */
+  void TearDown() override {
+    OfficeCursorTlsTest::TearDown();
+    office::set_display_scale_backend_for_test(nullptr);
+  }
+
+  FakeDisplayScaleBackend *fake {};  ///< Installed synthetic DPI backend, owned by the service.
+};
+
+/** @brief Verify paired reads and POST writes use actual synthetic system state. */
+TEST_F(OfficeDisplayScaleTlsTest, PairedReadAndPostReturnActualVerifiedValues) {
+  const auto before = request_xml("/office/display-scale");
+  ASSERT_EQ(before.get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(before.get<int>("root.scale"), 100);
+  EXPECT_EQ(before.get<int>("root.recommended"), 100);
+  EXPECT_EQ(before.get<std::string>("root.supportedScales"), "100,125,150,175,200");
+  const auto target = "/office/display-scale?scale=150&displayToken=" + before.get<std::string>("root.displayToken");
+  const auto after = request_xml(target, "paired", "POST");
+  EXPECT_EQ(after.get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(after.get<int>("root.scale"), 150);
+  EXPECT_EQ(fake->writes, 1);
+  EXPECT_EQ(request_status(target), 400);
+  EXPECT_EQ(request_xml(target, "paired", "POST", "ignored").get<int>("root.<xmlattr>.status_code"), 400);
+  EXPECT_EQ(fake->writes, 1);
+}
+
+/** @brief Verify rejected identities cannot reach even the synthetic DPI backend. */
+TEST_F(OfficeDisplayScaleTlsTest, UnknownDisabledAndUnpairedCertificatesNeverReachBackend) {
+  const auto target = "/office/display-scale?scale=150&displayToken=forbidden";
+  EXPECT_EQ(request_status("/office/display-scale", "unknown"), 401);
+  EXPECT_EQ(request_xml(target, "unknown", "POST").get<int>("root.<xmlattr>.status_code"), 401);
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, false));
+  EXPECT_EQ(request_status("/office/display-scale"), 401);
+  EXPECT_EQ(request_xml(target, "paired", "POST").get<int>("root.<xmlattr>.status_code"), 401);
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, true));
+  ASSERT_TRUE(nvhttp::unpair_client(paired_uuid));
+  EXPECT_EQ(request_status("/office/display-scale"), 401);
+  EXPECT_EQ(request_xml(target, "paired", "POST").get<int>("root.<xmlattr>.status_code"), 401);
+  EXPECT_EQ(fake->reads, 0);
+  EXPECT_EQ(fake->writes, 0);
+}
+
+/** @brief Verify absent credentials and plaintext cannot invoke display scaling. */
+TEST_F(OfficeDisplayScaleTlsTest, MissingCertificateAndPlainHttpCannotReachDpiHandler) {
+  EXPECT_ANY_THROW(request_status("/office/display-scale", ""));
+  EXPECT_ANY_THROW(request_xml("/office/display-scale?scale=150&displayToken=forbidden", "", "POST"));
+  SimpleWeb::Client<SimpleWeb::HTTP> plaintext {std::format("127.0.0.1:{}", port.load())};
+  plaintext.config.timeout = 5;
+  EXPECT_ANY_THROW(plaintext.request("GET", "/office/display-scale"));
+  EXPECT_EQ(fake->reads, 0);
+  EXPECT_EQ(fake->writes, 0);
 }
