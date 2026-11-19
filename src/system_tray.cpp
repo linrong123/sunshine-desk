@@ -81,6 +81,8 @@
   #include "system_tray.h"
   #include "thread_safe.h"
   #ifdef _WIN32
+    #include "office/authorization.h"
+    #include "office/tray_devices.h"
     #include "platform/windows/utf_utils.h"
   #endif
 
@@ -315,6 +317,10 @@ namespace system_tray {
         {.text = "-"},
   // Currently display device settings are only supported on Windows
   #ifdef _WIN32
+        // Office build: paired-device management and per-connection approval (office/CONNECTION.md).
+        {.text = "已授权设备", .submenu = office::tray_devices_menu},
+        {.text = "每次连接需本机确认", .checkbox = 1, .cb = office::tray_confirm_cb},
+        {.text = "-"},
         {.text = "Reset Display Device Config", .cb = tray_reset_display_device_config_cb},
   #endif
         {.text = "Restart", .cb = tray_restart_cb},
@@ -935,6 +941,36 @@ namespace system_tray {
     };
     tray_update(&tray);
   }
+
+  #ifdef _WIN32
+  void refresh_office_menu() {
+    const std::scoped_lock lock(tray_state_mutex());
+    office::rebuild_tray_devices();
+    for (auto *item = tray.menu; item->text != nullptr; ++item) {
+      if (item->cb == office::tray_confirm_cb) {
+        item->checked = office::confirm_connections.load() ? 1 : 0;
+      }
+    }
+    if (!tray_initialized_state().load()) {
+      return;
+    }
+
+    // tray_update re-shows a pending notification; keep a menu refresh from popping it up again.
+    const auto title = tray.notification_title;
+    const auto text = tray.notification_text;
+    const auto icon = tray.notification_icon;
+    const auto callback = tray.notification_cb;
+    tray.notification_title = nullptr;
+    tray.notification_text = nullptr;
+    tray.notification_icon = nullptr;
+    tray.notification_cb = nullptr;
+    tray_update(&tray);
+    tray.notification_title = title;
+    tray.notification_text = text;
+    tray.notification_icon = icon;
+    tray.notification_cb = callback;
+  }
+  #endif
 
   // Threading functions available on all platforms
   /**

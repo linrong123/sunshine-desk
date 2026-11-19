@@ -13,6 +13,9 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - Web 应用与精选导航、对应页面入口，以及应用新增和删除 API 路由移除。只读应用 API 返回固定 Desktop。上游相关源文件和处理函数保留，便于合并；旧接口调用不会添加应用。
 - 新安装及未显式配置的 Windows 显示设备策略默认为 `ensure_active`，分辨率和刷新率沿用 `auto`，客户端连接内调整后可直接按协商值重连应用。已有明确的 disabled/manual 等设置仍优先，不覆盖用户配置，不关闭其他实体显示器。
 - 其他管理功能、首次账户设置和 PIN 配对保留。客户端断线恢复不由服务端改写会话迁移实现代替。
+- Windows 上收到配对请求时弹出原生「授权请求」窗口（设备名、IP、4 位验证码、允许/拒绝），不必打开网页输入 PIN；网页 PIN 入口保留。
+- 可选「每次连接需本机确认」（配置键 `desk_confirm_connections`，默认关闭）；托盘「已授权设备」子菜单可禁用/启用、删除已配对设备并立即断开其串流。详见[直连授权](CONNECTION.md)。
+- 串流加密默认强制：`lan_encryption_mode` 与 `wan_encryption_mode` 未显式配置时为 `2`，不支持加密的旧客户端会被拒绝。
 
 此产品限制不是对拥有系统管理员权限者的隔离措施。保留的管理配置、全局准备命令和主机操作权限仍是受信任的管理功能。
 
@@ -44,6 +47,10 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 
 首期支持目标为 Windows Desktop Duplication。其他平台采集后端保留原行为，部分后端并不支持动态光标合成，不应将“接口存在”理解为所有平台均有视觉保证。旧服务器无 capability 或返回 404 时，客户端只提示不支持远端光标控制，不模拟 toggle、不阻止串流。并发配对客户端的最后一次写入生效；单客户端也应串行发送设置请求，避免网络乱序造成旧状态后到。
 
+## 直连授权
+
+主控端输入 IP/域名直连。首次授权沿用 GameStream PIN 配对，被控端弹窗输入验证码；开启每次确认后，已配对客户端在 launch/resume 前经 `GET /office/connect-request?action=start|status|cancel` 等待被控端允许，`serverinfo` 以 `OfficeConnectConfirm=1|0` 宣告是否生效。未获许可的 launch/resume 返回 XML `status_code=403`、`Host approval required`。弹窗只在 Windows 实现，其他平台确认不生效。协议、时序、线程模型与限制见 [CONNECTION.md](CONNECTION.md)。
+
 ## Windows 系统显示比例
 
 已新增已配对 HTTPS 上的 `GET /office/display-scale` 和 `POST /office/display-scale?scale=150&displayToken=<读取令牌>`，用于调整捕获显示器的真实 Windows 文字与图标比例。Windows `serverinfo` 宣告 `OfficeDisplayScale=1`；其他平台不宣告，接口返回明确不支持。此能力不改变客户端画面 zoom，不写客户端持久偏好。
@@ -57,8 +64,9 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - 本地独立策略测试：`clang++ -std=c++17 -Wall -Wextra -Werror -I. office/tests/policy.cpp -o <临时测试程序>`，运行生成程序。
 - `OfficeCursorTlsTest` 通过生产 TLS 服务器与认证回调测试已配对幂等 set、未知/禁用/解除配对拒绝、无证书及明文拒绝；使用环回临时端口和临时合成证书，不启动真实主机服务。
 - 完整 GoogleTest 包含 `tests/unit/test_office.cpp` 的固定运行目录与 cursor 参数测试，以及 `test_office_display_scale.cpp` 的 DPI 边界、严格请求、目标令牌、失败与读回测试。`OfficeDisplayScaleTlsTest` 使用生产 TLS 服务和 synthetic DPI backend，验证已配对读取/POST 及未知、禁用、解除配对、缺证书和明文拒绝；测试不修改任何真实显示器比例。
+- `test_office_authorization.cpp` 覆盖确认状态机（假时钟）、协议处理、launch 闸门、弹窗规则（假窗口后端）、配置解析与写回、加密默认值；`OfficeConnectRequestTlsTest` 经生产 TLS 服务验证 connect-request 与无许可 launch 的 403。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
-- 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。
+- 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、配对弹窗与每次连接确认弹窗、托盘禁用/删除设备、强制加密下的 Moonlight Desk 连接、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。
 
 详见[验证结果和工件哈希](VALIDATION.md)、[架构与上游维护](UPSTREAM.md)和[可回滚试用方案](TRIAL.md)。

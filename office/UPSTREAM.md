@@ -14,18 +14,23 @@
 
 | 位置 | 办公差异 | 合并时检查 |
 | --- | --- | --- |
-| `src/nvhttp.cpp` | 3 处：`#include "office/nvhttp_routes.h"`；`serverinfo` 中调用 `office::add_serverinfo_capabilities(tree)`；`start()` 注册完上游 HTTPS 路由后调用 `office::register_https_routes(https_server)`；另在 `test_support` 末尾有仅测试用的 `make_verified_https_server` | 只注册到 HTTPS 服务器，绝不注册到明文 HTTP；测试工厂的校验逻辑须与 `start()` 中上游 verify lambda 保持一致（证书链校验 + 客户端启用检查 + 401 响应） |
-| `office/nvhttp_routes.*` | 办公 HTTPS 扩展：路由表（cursor、display-scale GET/POST）与 serverinfo capability（`OfficeCursorSet`，Windows 上 `OfficeDisplayScale`） | 新增已认证扩展只改这里的路由表；处理函数签名跟随 `SimpleWeb::ServerBase<nvhttp::SunshineHTTPS>` |
-| `office/policy.h` | 固定 Desktop JSON、严格 cursor 参数校验、`desktop_catalog_only` 开关 | 保持独立，不引入主机私有配置 |
-| `src/main.cpp` | 首次 `proc::refresh` 前置 `office::desktop_catalog_only = true` | 确认仍在首次 refresh 之前 |
+| `src/nvhttp.cpp` | 3 处：`#include "office/nvhttp_routes.h"`；`serverinfo` 中调用 `office::add_serverinfo_capabilities(tree)`；`start()` 注册完上游 HTTPS 路由后调用 `office::register_https_routes(https_server)`；另在 `test_support` 末尾有仅测试用的 `make_verified_https_server`（其 verify 回调同样记录 `last_verified_client_cert/name`）与 `launch_for_test`。直连授权另加：`office_verified_client()` 在锁内返回最后验证的证书与名称；`launch` 与 `resume` 在上游参数检查之后、建立会话之前调用 `office::reject_unapproved_stream(...)` 闸门；`/cancel` 调用 `office::quit_current_client()` 取消宽限 | 只注册到 HTTPS 服务器，绝不注册到明文 HTTP；测试工厂的校验逻辑须与 `start()` 中上游 verify lambda 保持一致（证书链校验 + 客户端启用检查 + 记录验证身份 + 401 响应）；闸门须在任何会话/应用启动副作用之前 |
+| `office/nvhttp_routes.*` | 办公 HTTPS 扩展：路由表（cursor、display-scale GET/POST、connect-request）与 serverinfo capability（`OfficeCursorSet`、`OfficeConnectConfirm`，Windows 上 `OfficeDisplayScale`） | 新增已认证扩展只改这里的路由表；处理函数签名跟随 `SimpleWeb::ServerBase<nvhttp::SunshineHTTPS>` |
+| `office/policy.h` | 固定 Desktop JSON、严格 cursor 参数校验、`desktop_catalog_only` 开关、`default_encryption_mode = 2` | 保持独立，不引入主机私有配置 |
+| `office/connect_confirm.*`、`office/authorization*`、`office/windows/authorization_ui.cpp`、`office/tray_devices.h` | 直连授权：确认状态机、connect-request 处理与闸门、配对/连接弹窗线程、托盘设备管理，见 [CONNECTION.md](CONNECTION.md) | 依赖上游 `nvhttp::get_pending_pairings`/`pin`/`cancel_pairing`/`set_client_enabled`/`unpair_client`/`get_cert_by_uuid` 与 `rtsp_stream::terminate_sessions_by_cert`；上游改这些签名或语义时同步调整 |
+| `src/main.cpp` | 首次 `proc::refresh` 前置 `office::desktop_catalog_only = true`；构造 `office::authorization_ui_t`（Windows 启动弹窗线程，其他平台空实现） | 确认仍在首次 refresh 之前；弹窗对象须在 `nvhttp::start` 线程之前构造（否则启动瞬间确认未生效），因而在其 join 之后析构 |
+| `src/stream.cpp` | `session::start` 置为 RUNNING 后调用 `office::stream_started`，`session::stop` 首次置为 STOPPING 后调用 `office::stream_stopped`（开始断线宽限） | 两处须分别位于会话真正启动与结束的唯一路径上 |
+| `src/config.cpp` | `lan/wan_encryption_mode` 默认值取 `office::default_encryption_mode`；`apply_config` 在解析 flags 前调用 `office::apply_config(vars)`，读取并移除 `desk_confirm_connections` | 上游新增加密默认值或改 apply_config 顺序时复核；该键须在上游「未知配置项」告警前被移除 |
+| `src/system_tray.cpp/.h` | Windows 菜单在上游 Windows 项前插入「已授权设备」子菜单、「每次连接需本机确认」勾选项和分隔线；新增 `refresh_office_menu()`（持托盘锁重建子菜单，刷新时暂存通知以免重复弹出） | `tests/unit/test_system_tray.cpp` 的 Windows 菜单下标因此后移 3：6 已授权设备、7 勾选项、8 分隔线、9 Reset Display Device Config、10 Restart、11 Quit、12 结束符；上游增删菜单项时同步改测试下标，不删断言 |
 | `src/process.cpp` | `parse` 在开关打开时读取固定 Desktop 目录而非 apps 文件；函数签名与上游一致 | 检查所有生产加载入口仍经过 `parse`；单元测试中开关默认关闭，上游 apps 文件测试照常运行 |
 | `src/confighttp.cpp` | `getApps` 在开关打开时返回固定目录；不注册 `POST /api/apps` 与 `DELETE /api/apps/{id}` | 防止上游新增其他应用导入/创建入口；处理函数本身保留，上游测试直接调用它们 |
-| `src/config.cpp`、`docs/configuration.md`、Web `config_tabs.json` | `dd_configuration_option` 默认 `ensure_active` | 三处默认一致；不覆盖已配置的 disabled/manual |
-| `Navbar.vue`、`router.js` | 隐藏“应用”“精选”导航，两条路由重定向到首页 | 上游新增应用相关页面时同样隐藏 |
+| `src/config.cpp`、`docs/configuration.md`、Web `config_tabs.json` | `dd_configuration_option` 默认 `ensure_active`；`lan_encryption_mode`/`wan_encryption_mode` 默认 `2`；`docs/configuration.md` 新增 `desk_confirm_connections` 条目 | 三处默认一致；不覆盖已配置的 disabled/manual 和显式加密模式 |
+| `Navbar.vue`、`router.js` | 隐藏“应用”“精选”导航，两条路由重定向到首页；未使用的 `Layers`/`Star` 图标导入已删除 | 上游新增应用相关页面时同样隐藏 |
+| `tests/unit/test_nvhttp_client_auth.cpp` | `OfficeCursorTlsTest` 在注册生产路由后调用虚函数 `register_test_routes(server)`（默认空），子类 `OfficeConnectRequestTlsTest` 借此在 `server->start()` 前挂上 `launch_for_test` | Simple-Web-Server 必须在 start 前注册资源；上游改 fixture 时保留该钩子 |
 | 三个平台 `assets/apps.json` | 新安装 Desktop-only | 上游 config.cpp 仍仅在用户文件不存在时复制模板 |
 | `src/globals.*`、`src/platform/common.h`、各平台 capture 签名及测试替身 | `display_cursor` 与 capture 的 `cursor` 参数为 `std::atomic_bool` | 上游新增的 capture 实现（本次合并新增 macOS ScreenCaptureKit 路径）和测试里的 `display_t` 替身（本次为 `tests/unit/platform/linux/test_display_geometry.cpp`、`tests/unit/platform/macos/test_display_helpers.mm`）须同步改签名，只改签名、不删测试；合并后 `grep -rn "capture(.*, bool \*" src tests` 应无结果；见下文取舍 |
 | `office/display_scale.*`、`office/windows/display_scale.cpp` | 捕获 source 的真实系统 DPI、严格参数、随机目标令牌、串行读写与读回 | Windows 非公开 -3/-4 布局和 effective DPI 核验必须同时有效；未知值拒绝，不能 clamp 或改其他显示器；保留 mock/TLS 测试 |
-| `cmake/compile_definitions/common.cmake` | 把 office 源码加入公共构建清单 | Windows 以外不宣告 DPI 能力、不调用 Windows API；新符号必须完整 Doxygen 文档化 |
+| `cmake/compile_definitions/common.cmake` | 把 office 源码加入公共构建清单（含直连授权的 8 个文件；`office/windows/authorization_ui.cpp` 整体 `#ifdef _WIN32`） | Windows 以外不宣告 DPI 能力、不调用 Windows API；新符号必须完整 Doxygen 文档化 |
 | `dockle.toml` | `[targets.doxygen] inputs` 逐个列入 office 源文件 | 上游已用 dockle 取代 `docs/Doxyfile`；`dockle_add_docs(docs TARGETS docs)` 未加 `ALL`，`ninja -C build` 不构建文档，上游只在 Read the Docs（`.readthedocs.yaml`）跑严格文档构建，因此 office CI 目前**不**执行 Doxygen 检查，需手动构建 `docs` 目标核对；新增 office 源文件要同时加到这里，不整目录加入以免中文 Markdown 进入文档构建 |
 | `office/windows` | 复用 MSI 的干净安装包装、只写候选的配置工具 | 不擅自安装 VDD、覆盖现有配置或重启 |
 | `.github/workflows/ci-windows.yml` | 去掉 ARM64 矩阵项；测试步骤 `set -euo pipefail`；上传测试 XML | 其余上游 workflow 保持原文件，见下文 |

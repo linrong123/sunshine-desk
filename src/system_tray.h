@@ -131,6 +131,15 @@ namespace system_tray {
    */
   void update_tray_require_pin();
 
+#ifdef _WIN32
+  /**
+   * @brief Rebuild the office "已授权设备" submenu and the approval checkbox, then refresh the tray.
+   *
+   * Safe to call before the tray starts; the rebuilt entries are used when it initializes.
+   */
+  void refresh_office_menu();
+#endif
+
 #if defined(_WIN32) || defined(__APPLE__)
   /**
    * @brief Update the Virtual HID Broker license submenu and optional notification.

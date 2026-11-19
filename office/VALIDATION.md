@@ -74,3 +74,17 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - Linux 与 macOS 未编译：cursor 的 `std::atomic_bool` 签名改动覆盖 Linux 抓屏、macOS `display.mm` 和 macOS 测试替身，只做了代码审阅。
 - 严格 Doxygen 检查未执行：上游改用 dockle，`docs` 目标不在默认构建中；`dockle.toml` 已列入 office 源文件，但没有在 CI 中构建过。
 - 未部署到任何真实主机；合并后没有在实机上重新验证光标开关、DPI 调整、配对与 Desktop-only 目录。Web UI `getApps` 的 Desktop-only 分支没有单元测试。MSI 未执行安装或卸载。
+
+## 直连授权（2026-11-19）
+
+分支 `feat/direct-auth`：首次配对弹窗、每次连接确认（`/office/connect-request`、launch/resume 闸门、`OfficeConnectConfirm`）、托盘授权管理、加密默认 2。设计与限制见[直连授权](CONNECTION.md)。
+
+- Windows CI：待记录。
+- 本地：clang-format 23.1.0 对改动的 C++ 文件无修改；本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行。
+
+待实机验收（不能由 CI 推出）：
+
+- 首次配对弹窗的显示、PIN 校验、允许/拒绝与超时关闭；同时 3 个以上请求的回退。
+- 托盘「已授权设备」禁用/启用/删除（含确认框）与断流；「每次连接需本机确认」开关写回配置。
+- 开启确认后 Moonlight Desk 发起请求、被控端允许/拒绝/超时、断线 120 秒内免确认恢复、退出应用后需重新确认；官方 Moonlight 收到 403 后在本机允许并重试。
+- 锁屏或服务模式下弹窗所在会话；加密默认 2 对旧客户端的拒绝提示。

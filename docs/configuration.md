@@ -300,6 +300,32 @@ consent prompt for directory ACLs, so the Web UI shows setup steps for correctin
     </tr>
 </table>
 
+### desk_confirm_connections
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Sunshine Desk only. Ask the host user to allow every stream start from a paired client.
+            Clients that are not approved receive "Host approval required" until the host user clicks
+            Allow in the prompt window. The prompt window exists only on Windows; elsewhere this option has no
+            effect. On Windows the tray entry "每次连接需本机确认" changes and saves it.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            disabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            desk_confirm_connections = enabled
+            @endcode</td>
+    </tr>
+</table>
+
 ## Input
 
 ### controller
@@ -1795,8 +1821,9 @@ consent prompt for directory ACLs, so the Web UI shows setup steps for correctin
     <tr>
         <td>Default</td>
         <td colspan="2">@code{}
-            0
-            @endcode</td>
+            2
+            @endcode
+            Sunshine Desk defaults to 2; upstream Sunshine defaults to 0.</td>
     </tr>
     <tr>
         <td>Example</td>
@@ -1832,8 +1859,9 @@ consent prompt for directory ACLs, so the Web UI shows setup steps for correctin
     <tr>
         <td>Default</td>
         <td colspan="2">@code{}
-            1
-            @endcode</td>
+            2
+            @endcode
+            Sunshine Desk defaults to 2; upstream Sunshine defaults to 1.</td>
     </tr>
     <tr>
         <td>Example</td>

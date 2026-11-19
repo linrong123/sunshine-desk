@@ -70,7 +70,7 @@
 </template>
 
 <script>
-import { CircleUserRound, Home, Info, Layers, Lock, LogOut, Settings, Shield, Star } from '@lucide/vue'
+import { CircleUserRound, Home, Info, Lock, LogOut, Settings, Shield } from '@lucide/vue'
 import ThemeToggle from './ThemeToggle.vue'
 import Notification from './Notification.vue'
 
@@ -80,8 +80,6 @@ export default {
     Notification,
     Home,
     Lock,
-    Layers,
-    Star,
     Settings,
     Shield,
     Info,

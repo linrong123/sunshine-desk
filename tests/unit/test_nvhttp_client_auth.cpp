@@ -28,6 +28,7 @@
 #include <src/nvhttp.h>
 
 // office includes
+#include "office/authorization.h"
 #include "office/nvhttp_routes.h"
 
 namespace fs = std::filesystem;
@@ -239,6 +240,7 @@ protected:
       (directory / "server.key").string()
     );
     office::register_https_routes(*server);
+    register_test_routes(*server);
     server_thread = std::jthread([this]() {
       server->start([this](unsigned short assigned) {
         port.store(assigned);
@@ -266,6 +268,13 @@ protected:
     std::error_code ignored;
     fs::remove_all(directory, ignored);
     ClientAuthorizationTest::TearDown();
+  }
+
+  /**
+   * @brief Add routes a derived fixture needs before the listener starts.
+   * @param https_server Server whose resources are still mutable.
+   */
+  virtual void register_test_routes([[maybe_unused]] SimpleWeb::ServerBase<nvhttp::SunshineHTTPS> &https_server) {
   }
 
   /**
@@ -416,4 +425,146 @@ TEST_F(OfficeDisplayScaleTlsTest, MissingCertificateAndPlainHttpCannotReachDpiHa
   EXPECT_ANY_THROW(plaintext.request("GET", "/office/display-scale"));
   EXPECT_EQ(fake->reads, 0);
   EXPECT_EQ(fake->writes, 0);
+}
+
+/**
+ * @brief Production TLS endpoint with per-connection host approval in effect.
+ */
+class OfficeConnectRequestTlsTest: public OfficeCursorTlsTest {
+protected:
+  /**
+   * @brief Enable host approval as if the prompt thread were running, then start the endpoint.
+   */
+  void SetUp() override {
+    original_confirm = office::confirm_connections.load();
+    original_prompt = office::prompt_available.load();
+    office::confirm_connections.store(true);
+    office::prompt_available.store(true);
+    office::connect_tracker().clear();
+    OfficeCursorTlsTest::SetUp();
+  }
+
+  /**
+   * @brief Stop the endpoint and restore the approval switches.
+   */
+  void TearDown() override {
+    OfficeCursorTlsTest::TearDown();
+    office::connect_tracker().clear();
+    office::confirm_connections.store(original_confirm);
+    office::prompt_available.store(original_prompt);
+  }
+
+  /**
+   * @brief Expose the production launch handler on the test endpoint.
+   * @param https_server Server whose resources are still mutable.
+   */
+  void register_test_routes(SimpleWeb::ServerBase<nvhttp::SunshineHTTPS> &https_server) override {
+    https_server.resource["^/launch$"]["GET"] = nvhttp::test_support::launch_for_test;
+  }
+
+  /**
+   * @brief Request a connect-request action.
+   * @param query Query string after `?`, or empty for none.
+   * @param identity Synthetic certificate identity.
+   * @return Parsed response.
+   */
+  boost::property_tree::ptree connect(const std::string &query, const std::string &identity = "paired") {
+    return request_xml(query.empty() ? "/office/connect-request" : "/office/connect-request?" + query, identity);
+  }
+
+private:
+  bool original_confirm {false};  ///< Configured switch restored at teardown.
+  bool original_prompt {false};  ///< Prompt availability restored at teardown.
+};
+
+TEST_F(OfficeConnectRequestTlsTest, MalformedActionsReturnBadRequest) {
+  for (const auto *query : {"", "action=", "action=begin", "action=start&action=start", "action=start&action=cancel", "act=start"}) {
+    EXPECT_EQ(connect(query).get<int>("root.<xmlattr>.status_code"), 400) << query;
+  }
+  EXPECT_TRUE(office::connect_tracker().pending().empty());
+}
+
+TEST_F(OfficeConnectRequestTlsTest, StartStatusCancelUseTheVerifiedIdentity) {
+  EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "none");
+  const auto started = connect("action=start");
+  EXPECT_EQ(started.get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(started.get<std::string>("root.state"), "pending");
+  EXPECT_EQ(started.get<int>("root.timeoutSeconds"), 60);
+  EXPECT_EQ(connect("action=start").get<std::string>("root.state"), "pending");
+
+  const auto pending = office::connect_tracker().pending();
+  ASSERT_EQ(pending.size(), 1U);
+  EXPECT_EQ(pending.front().name, "office test");
+  EXPECT_EQ(pending.front().address, "127.0.0.1");
+
+  ASSERT_TRUE(office::connect_tracker().resolve(pending.front().id, true));
+  EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "approved");
+  EXPECT_EQ(connect("action=cancel").get<std::string>("root.state"), "none");
+  EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "none");
+
+  connect("action=start");
+  ASSERT_TRUE(office::connect_tracker().resolve(office::connect_tracker().pending().front().id, false));
+  EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "denied");
+}
+
+TEST_F(OfficeConnectRequestTlsTest, ReportsNotRequiredWhenDisabled) {
+  office::confirm_connections.store(false);
+  const auto response = connect("action=start");
+  EXPECT_EQ(response.get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(response.get<std::string>("root.state"), "not_required");
+  EXPECT_EQ(response.get<int>("root.timeoutSeconds"), 60);
+  EXPECT_TRUE(office::connect_tracker().pending().empty());
+}
+
+TEST_F(OfficeConnectRequestTlsTest, UnknownDisabledMissingCertificateAndPlainHttpCannotRequest) {
+  EXPECT_EQ(connect("action=start", "unknown").get<int>("root.<xmlattr>.status_code"), 401);
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, false));
+  EXPECT_EQ(connect("action=start").get<int>("root.<xmlattr>.status_code"), 401);
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, true));
+  EXPECT_ANY_THROW(connect("action=start", ""));
+  SimpleWeb::Client<SimpleWeb::HTTP> plaintext {std::format("127.0.0.1:{}", port.load())};
+  plaintext.config.timeout = 5;
+  EXPECT_ANY_THROW(plaintext.request("GET", "/office/connect-request?action=start"));
+  EXPECT_TRUE(office::connect_tracker().pending().empty());
+}
+
+TEST_F(OfficeConnectRequestTlsTest, LaunchWithoutPermitIsRejectedAndStartsARequest) {
+  EXPECT_EQ(request_status("/launch?appid=1"), 400);
+  EXPECT_TRUE(office::connect_tracker().pending().empty());
+
+  const auto response = request_xml("/launch?rikey=00&rikeyid=1&localAudioPlayMode=0&appid=1");
+  EXPECT_EQ(response.get<int>("root.<xmlattr>.status_code"), 403);
+  EXPECT_EQ(response.get<std::string>("root.<xmlattr>.status_message"), "Host approval required");
+  EXPECT_EQ(response.get<int>("root.gamesession"), 0);
+  EXPECT_EQ(office::connect_tracker().pending().size(), 1U);
+  EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "pending");
+
+  EXPECT_EQ(request_status("/launch?rikey=00&rikeyid=1&localAudioPlayMode=0&appid=1"), 403);
+  EXPECT_EQ(office::connect_tracker().pending().size(), 1U);
+}
+
+TEST_F(OfficeConnectRequestTlsTest, DisablingOrDeletingAClientRevokesPermitsAndGrace) {
+  const auto cert = nvhttp::get_cert_by_uuid(paired_uuid);
+  ASSERT_FALSE(cert.empty());
+  auto &tracker = office::connect_tracker();
+
+  tracker.start(cert, "office test", "127.0.0.1");
+  ASSERT_TRUE(tracker.resolve(tracker.pending().front().id, true));
+  ASSERT_TRUE(tracker.admit(cert));
+  tracker.stream_stopped(cert);
+  ASSERT_EQ(tracker.status(cert), office::connect_state_e::approved);
+  EXPECT_FALSE(office::set_client_access("00000000-0000-0000-0000-000000000000", false));
+  ASSERT_TRUE(office::set_client_access(paired_uuid, false));
+  EXPECT_EQ(tracker.status(cert), office::connect_state_e::none);
+  EXPECT_EQ(connect("action=status").get<int>("root.<xmlattr>.status_code"), 401);
+  ASSERT_TRUE(office::set_client_access(paired_uuid, true));
+  EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "none");
+
+  tracker.start(cert, "office test", "127.0.0.1");
+  ASSERT_TRUE(tracker.resolve(tracker.pending().front().id, true));
+  ASSERT_EQ(tracker.status(cert), office::connect_state_e::approved);
+  EXPECT_FALSE(office::delete_client("00000000-0000-0000-0000-000000000000"));
+  ASSERT_TRUE(office::delete_client(paired_uuid));
+  EXPECT_EQ(tracker.status(cert), office::connect_state_e::none);
+  EXPECT_EQ(connect("action=status").get<int>("root.<xmlattr>.status_code"), 401);
 }

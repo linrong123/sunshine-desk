@@ -27,6 +27,7 @@
 #include "input.h"
 #include "logging.h"
 #include "network.h"
+#include "office/authorization.h"
 #include "platform/common.h"
 #include "process.h"
 #include "stream.h"
@@ -2285,6 +2286,8 @@ namespace stream {
         return;
       }
 
+      // Office: an approved stream that ends keeps a short reconnect grace (office/CONNECTION.md).
+      office::stream_stopped(session.client_cert);
       session.shutdown_event->raise(true);
     }
 
@@ -2372,6 +2375,8 @@ namespace stream {
       session.videoThread = std::jthread {videoThread, &session};
 
       session.state.store(state_e::RUNNING, std::memory_order_relaxed);
+      // Office: an admitted client stays admitted while its stream runs (office/CONNECTION.md).
+      office::stream_started(session.client_cert);
 
       // If this is the first session, invoke the platform callbacks
       if (++running_sessions == 1) {

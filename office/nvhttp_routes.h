@@ -13,6 +13,8 @@
 // standard includes
 #include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 
 // lib includes
 #include <boost/property_tree/ptree.hpp>
@@ -20,6 +22,17 @@
 
 // local includes
 #include "src/nvhttp.h"
+
+namespace nvhttp {
+  /**
+   * @brief Client accepted by the most recent successful TLS client-certificate verification.
+   *
+   * Defined in `src/nvhttp.cpp`. Like the upstream launch-session identity, it reflects the latest
+   * handshake, so two clients completing handshakes at the same moment can race.
+   * @return Certificate PEM and paired device name; empty if no client was verified yet.
+   */
+  std::pair<std::string, std::string> office_verified_client();
+}  // namespace nvhttp
 
 namespace office {
   using https_server_t = SimpleWeb::ServerBase<nvhttp::SunshineHTTPS>;  ///< GameStream HTTPS server type that verifies paired client certificates.
@@ -51,6 +64,27 @@ namespace office {
    * @param request Parameterless GET, or POST with `scale` and the previously queried `displayToken`.
    */
   void display_scale(https_response_t response, https_request_t request);
+
+  /**
+   * @brief Start, query, or cancel the calling client's connection request.
+   * @param response GameStream XML response with `state` and `timeoutSeconds`.
+   * @param request GET with exactly one `action=start`, `action=status`, or `action=cancel` parameter.
+   */
+  void connect_request_handler(https_response_t response, https_request_t request);
+
+  /**
+   * @brief Gate `/launch` and `/resume` on host approval for the calling client.
+   * @param tree Response tree; receives the 403 result when the stream is rejected.
+   * @param result_field Result element set to 0 on rejection, such as `root.gamesession`.
+   * @param request Verified GameStream HTTPS request.
+   * @return `true` if the request was rejected and the handler must return.
+   */
+  bool reject_unapproved_stream(boost::property_tree::ptree &tree, std::string_view result_field, const https_request_t &request);
+
+  /**
+   * @brief Record an explicit quit (`/cancel`) by the calling client; ends its reconnect grace.
+   */
+  void quit_current_client();
 }  // namespace office
 
 #ifdef SUNSHINE_TESTS
@@ -70,6 +104,16 @@ namespace nvhttp::test_support {
   std::unique_ptr<SimpleWeb::ServerBase<SunshineHTTPS>> make_verified_https_server(
     const std::string &certificate_file,
     const std::string &private_key_file
+  );
+
+  /**
+   * @brief Run the production `/launch` handler with local audio disabled.
+   * @param response GameStream XML response.
+   * @param request Verified GameStream HTTPS request.
+   */
+  void launch_for_test(
+    std::shared_ptr<SimpleWeb::ServerBase<SunshineHTTPS>::Response> response,
+    std::shared_ptr<SimpleWeb::ServerBase<SunshineHTTPS>::Request> request
   );
 }  // namespace nvhttp::test_support
 #endif

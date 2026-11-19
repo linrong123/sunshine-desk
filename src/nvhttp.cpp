@@ -1315,6 +1315,11 @@ namespace nvhttp {
     response->close_connection_after_response = true;
   }
 
+  std::pair<std::string, std::string> office_verified_client() {
+    std::lock_guard lock {client_auth_mutex()};
+    return {last_verified_client_cert, last_verified_client_name};
+  }
+
   nlohmann::json get_all_clients() {
     nlohmann::json named_cert_nodes = nlohmann::json::array();
     std::lock_guard lock {client_auth_mutex()};
@@ -1403,6 +1408,10 @@ namespace nvhttp {
       tree.put("root.<xmlattr>.status_code", 400);
       tree.put("root.<xmlattr>.status_message", "Missing a required launch parameter");
 
+      return;
+    }
+
+    if (office::reject_unapproved_stream(tree, "root.gamesession", request)) {
       return;
     }
 
@@ -1526,6 +1535,10 @@ namespace nvhttp {
       return;
     }
 
+    if (office::reject_unapproved_stream(tree, "root.resume", request)) {
+      return;
+    }
+
     // Newer Moonlight clients send localAudioPlayMode on /resume too,
     // so we should use it if it's present in the args and there are
     // no active sessions we could be interfering with.
@@ -1602,6 +1615,7 @@ namespace nvhttp {
     tree.put("root.<xmlattr>.status_code", 200);
 
     rtsp_stream::terminate_sessions();
+    office::quit_current_client();
 
     if (proc::proc.running() > 0) {
       proc::proc.terminate();
@@ -1885,6 +1899,8 @@ namespace nvhttp {
       std::lock_guard lock {client_auth_mutex()};
       client_root = {};
       cert_chain.clear();
+      last_verified_client_cert.clear();
+      last_verified_client_name.clear();
     }
 
     std::string add_client(const std::string &name, std::string cert, bool enabled) {
@@ -1955,7 +1971,14 @@ namespace nvhttp {
         if (verify_client_certificate(x509.get())) {
           return 0;
         }
-        return get_client_status(crypto::pem(x509)).first ? 1 : 0;
+        auto pem = crypto::pem(x509);
+        auto [enabled, client_name] = get_client_status(pem);
+        if (!enabled) {
+          return 0;
+        }
+        last_verified_client_cert = pem;
+        last_verified_client_name = client_name;
+        return 1;
       };
       server->on_verify_failed = [](resp_https_t resp, req_https_t req) {
         pt::ptree tree;
@@ -1969,6 +1992,11 @@ namespace nvhttp {
       };
       server->default_resource["GET"] = not_found<SunshineHTTPS>;
       return server;
+    }
+
+    void launch_for_test(resp_https_t response, req_https_t request) {
+      bool host_audio = false;
+      launch(host_audio, std::move(response), std::move(request));
     }
   }  // namespace test_support
 #endif

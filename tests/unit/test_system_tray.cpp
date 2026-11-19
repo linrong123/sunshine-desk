@@ -158,13 +158,20 @@ namespace {
     EXPECT_EQ(tray_data.menu[4].submenu[3].text, nullptr);
     EXPECT_STREQ(tray_data.menu[5].text, "-");
     #ifdef _WIN32
-    EXPECT_STREQ(tray_data.menu[6].text, "Reset Display Device Config");
-    EXPECT_NE(tray_data.menu[6].cb, nullptr);
-    EXPECT_STREQ(tray_data.menu[7].text, "Restart");
+    // Office build: two entries and a separator precede the upstream Windows entries (office/UPSTREAM.md).
+    EXPECT_STREQ(tray_data.menu[6].text, "已授权设备");
+    EXPECT_NE(tray_data.menu[6].submenu, nullptr);
+    EXPECT_STREQ(tray_data.menu[7].text, "每次连接需本机确认");
+    EXPECT_EQ(tray_data.menu[7].checkbox, 1);
     EXPECT_NE(tray_data.menu[7].cb, nullptr);
-    EXPECT_STREQ(tray_data.menu[8].text, "Quit");
-    EXPECT_NE(tray_data.menu[8].cb, nullptr);
-    EXPECT_EQ(tray_data.menu[9].text, nullptr);
+    EXPECT_STREQ(tray_data.menu[8].text, "-");
+    EXPECT_STREQ(tray_data.menu[9].text, "Reset Display Device Config");
+    EXPECT_NE(tray_data.menu[9].cb, nullptr);
+    EXPECT_STREQ(tray_data.menu[10].text, "Restart");
+    EXPECT_NE(tray_data.menu[10].cb, nullptr);
+    EXPECT_STREQ(tray_data.menu[11].text, "Quit");
+    EXPECT_NE(tray_data.menu[11].cb, nullptr);
+    EXPECT_EQ(tray_data.menu[12].text, nullptr);
     #else
     EXPECT_STREQ(tray_data.menu[6].text, "Restart");
     EXPECT_NE(tray_data.menu[6].cb, nullptr);
