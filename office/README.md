@@ -4,7 +4,7 @@
 
 项目现名为 Sunshine Desk，配套客户端为 Moonlight Desk。`office/` 源码目录、`OfficeCursorSet` 和 `office/cursor` 协议名保持兼容；本次更名不迁移服务或配置，也不改变安装器身份。
 
-Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599)完成构建、测试及 MSI/ZIP 打包：639 通过、5 跳过、0 失败。尚未完成真实机器安装、发行版签名和双端连接验收，不能称为完整无人值守交付。现有 MSI 产品标识、服务名和默认配置位置沿用上游，因此不能与官方版并存；请使用全新测试机，不在生产安装上覆盖试用。
+Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599)完成构建、测试及 MSI/ZIP 打包：639 通过、5 跳过、0 失败。已完成一次[独立 ZIP 目录实机部署](DEPLOYMENT.md)，尚未完成 MSI 安装验收、发行版签名和完整双端功能验收，不能称为完整无人值守交付。现有 MSI 产品标识、服务名和默认配置位置沿用上游，因此不能与官方版并存；不要用 MSI 覆盖现有安装试用。
 
 ## 已实现的行为
 
