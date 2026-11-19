@@ -3,9 +3,12 @@
  * @brief Definitions for graphics related functions.
  */
 // standard includes
+#include <array>
 #include <fcntl.h>
 #include <future>
 #include <stdexcept>
+#include <string_view>
+#include <tuple>
 
 // local includes
 #include "graphics.h"
@@ -85,7 +88,7 @@ namespace gl {
 
     ctx.GenTextures(textures.size(), textures.begin());
 
-    float color[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 4> color = {0.0f, 0.0f, 0.0f, 1.0f};
 
     for (auto tex : textures) {
       gl::ctx.BindTexture(GL_TEXTURE_2D, tex);
@@ -93,7 +96,7 @@ namespace gl {
       gl::ctx.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);  // y
       gl::ctx.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
       gl::ctx.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      gl::ctx.TexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
+      gl::ctx.TexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color.data());
     }
 
     return textures;
@@ -306,7 +309,7 @@ namespace gbm {
    * @brief Load GBM symbols required for EGL device creation.
    */
   int init() {
-    static void *handle {nullptr};
+    static dyn::library_t *handle {nullptr};
     static bool funcs_loaded = false;
 
     if (funcs_loaded) {
@@ -512,7 +515,7 @@ namespace egl {
         return nullptr;
     }
 
-    // native_display.left() equals native_display.right()
+    // Initialize EGL with the selected platform and its native display handle.
     EGLDisplay raw_display = EGL_NO_DISPLAY;
 
     if (eglGetPlatformDisplayEXT) {
@@ -548,7 +551,7 @@ namespace egl {
     BOOST_LOG(debug) << "EGL: ["sv << vendor << "]: version ["sv << version << ']';
     BOOST_LOG(debug) << "API's supported: ["sv << apis << ']';
 
-    const char *extensions[] {
+    std::array<const char *, 4> extensions {
       "EGL_KHR_create_context",
       "EGL_KHR_surfaceless_context",
       "EGL_EXT_image_dma_buf_import",
@@ -556,7 +559,7 @@ namespace egl {
     };
 
     for (auto ext : extensions) {
-      if (!std::strstr(extension_st, ext)) {
+      if (!std::string_view {extension_st}.contains(ext)) {
         BOOST_LOG(error) << "Missing extension: ["sv << ext << ']';
         return nullptr;
       }
@@ -571,7 +574,7 @@ namespace egl {
   std::optional<ctx_t> make_ctx(display_t::pointer display) {
     bool nice_warning = false;
 
-    constexpr int conf_attr[] {
+    constexpr std::array<int, 3> conf_attr {
       EGL_RENDERABLE_TYPE,
       EGL_OPENGL_BIT,
       EGL_NONE
@@ -579,7 +582,7 @@ namespace egl {
 
     int count;
     EGLConfig conf;
-    if (!eglChooseConfig(display, conf_attr, &conf, 1, &count)) {
+    if (!eglChooseConfig(display, conf_attr.data(), &conf, 1, &count)) {
       BOOST_LOG(error) << "Couldn't set config attributes: ["sv << util::hex(eglGetError()).to_string_view() << ']';
       return std::nullopt;
     }
@@ -817,8 +820,8 @@ namespace egl {
 
     GLenum attachment = GL_COLOR_ATTACHMENT0;
     gl::ctx.DrawBuffers(1, &attachment);
-    const GLuint rgb_black[] = {0, 0, 0, 0};
-    gl::ctx.ClearBufferuiv(GL_COLOR, 0, rgb_black);
+    const std::array<GLuint, 4> rgb_black = {0, 0, 0, 0};
+    gl::ctx.ClearBufferuiv(GL_COLOR, 0, rgb_black.data());
 
     gl_drain_errors;
 
@@ -826,8 +829,8 @@ namespace egl {
   }
 
   // Constants for clear black color Y, U, V. U & V are same so:
-  const float y_black[] = {0.0f, 0.0f, 0.0f, 0.0f};  ///< Y black.
-  const float uv_black[] = {0.5f, 0.5f, 0.5f, 0.5f};  ///< Uv black.
+  const std::array<float, 4> y_black = {0.0f, 0.0f, 0.0f, 0.0f};  ///< Y black.
+  const std::array<float, 4> uv_black = {0.5f, 0.5f, 0.5f, 0.5f};  ///< Uv black.
 
   /**
    * @brief Bind NV12 target framebuffers to their Y and UV plane textures.
@@ -840,7 +843,7 @@ namespace egl {
     for (size_t x = 0; x < attachments.size(); ++x) {
       gl::ctx.BindFramebuffer(GL_FRAMEBUFFER, nv12->buf[x]);
       gl::ctx.DrawBuffers(1, &attachments[x]);
-      gl::ctx.ClearBufferfv(GL_COLOR, 0, x == 0 ? y_black : uv_black);
+      gl::ctx.ClearBufferfv(GL_COLOR, 0, x == 0 ? y_black.data() : uv_black.data());
     }
 
     gl::ctx.BindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -859,7 +862,7 @@ namespace egl {
     for (size_t x = 0; x < attachments.size(); ++x) {
       gl::ctx.BindFramebuffer(GL_FRAMEBUFFER, yuv444->buf[x]);
       gl::ctx.DrawBuffers(1, &attachments[x]);
-      gl::ctx.ClearBufferfv(GL_COLOR, 0, x == 0 ? y_black : uv_black);
+      gl::ctx.ClearBufferfv(GL_COLOR, 0, x == 0 ? y_black.data() : uv_black.data());
     }
 
     gl::ctx.BindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -970,13 +973,38 @@ namespace egl {
   }
 
   /**
+   * @brief Allocate storage for each plane texture of a render target.
+   *
+   * @param tex Plane textures, one per entry in `planes`.
+   * @param planes Sized internal format, width and height of each plane.
+   * @param storage Optional allocator. Uses `TexStorage2D` when empty.
+   * @return True when every plane was allocated.
+   */
+  template<std::size_t N>
+  static bool allocate_target_storage(const gl::tex_t &tex, const std::array<std::tuple<GLint, int, int>, N> &planes, const target_storage_fn &storage) {
+    for (std::size_t i = 0; i < N; ++i) {
+      const auto &[format, plane_width, plane_height] = planes[i];
+
+      gl::ctx.BindTexture(GL_TEXTURE_2D, tex[i]);
+      if (!storage) {
+        gl::ctx.TexStorage2D(GL_TEXTURE_2D, 1, format, plane_width, plane_height);
+      } else if (storage(i, format, plane_width, plane_height)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * @brief Create biplanar YUV textures to render into.
    * @param width Width of the target frame.
    * @param height Height of the target frame.
    * @param format Format of the target frame.
+   * @param storage Optional allocator for the plane textures' storage. Uses `TexStorage2D` when empty.
    * @return The new RGB texture.
    */
-  std::optional<nv12_t> create_nv12_target(int width, int height, AVPixelFormat format) {
+  std::optional<nv12_t> create_nv12_target(int width, int height, AVPixelFormat format, const target_storage_fn &storage) {
     nv12_t nv12 {
       nv12_img_t {
         .display = EGL_NO_DISPLAY,
@@ -1003,11 +1031,13 @@ namespace egl {
       return std::nullopt;
     }
 
-    gl::ctx.BindTexture(GL_TEXTURE_2D, nv12->tex[0]);
-    gl::ctx.TexStorage2D(GL_TEXTURE_2D, 1, y_format, width, height);
-
-    gl::ctx.BindTexture(GL_TEXTURE_2D, nv12->tex[1]);
-    gl::ctx.TexStorage2D(GL_TEXTURE_2D, 1, uv_format, width >> fmt_desc->log2_chroma_w, height >> fmt_desc->log2_chroma_h);
+    const std::array<std::tuple<GLint, int, int>, 2> planes {{
+      {y_format, width, height},
+      {uv_format, width >> fmt_desc->log2_chroma_w, height >> fmt_desc->log2_chroma_h},
+    }};
+    if (!allocate_target_storage(nv12->tex, planes, storage)) {
+      return std::nullopt;
+    }
 
     nv12->buf.bind(std::begin(nv12->tex), std::end(nv12->tex));
 
@@ -1019,7 +1049,7 @@ namespace egl {
   /**
    * @brief Create YUV444 target.
    */
-  std::optional<yuv444_t> create_yuv444_target(int width, int height, AVPixelFormat format) {
+  std::optional<yuv444_t> create_yuv444_target(int width, int height, AVPixelFormat format, const target_storage_fn &storage) {
     yuv444_t yuv444 {
       yuv444_img_t {
         .display = EGL_NO_DISPLAY,
@@ -1050,14 +1080,14 @@ namespace egl {
       return std::nullopt;
     }
 
-    gl::ctx.BindTexture(GL_TEXTURE_2D, yuv444->tex[0]);
-    gl::ctx.TexStorage2D(GL_TEXTURE_2D, 1, y_format, width, height);
-
-    gl::ctx.BindTexture(GL_TEXTURE_2D, yuv444->tex[1]);
-    gl::ctx.TexStorage2D(GL_TEXTURE_2D, 1, u_format, width, height);
-
-    gl::ctx.BindTexture(GL_TEXTURE_2D, yuv444->tex[2]);
-    gl::ctx.TexStorage2D(GL_TEXTURE_2D, 1, v_format, width, height);
+    const std::array<std::tuple<GLint, int, int>, 3> planes {{
+      {y_format, width, height},
+      {u_format, width, height},
+      {v_format, width, height},
+    }};
+    if (!allocate_target_storage(yuv444->tex, planes, storage)) {
+      return std::nullopt;
+    }
 
     yuv444->buf.bind(std::begin(yuv444->tex), std::end(yuv444->tex));
 
@@ -1069,7 +1099,7 @@ namespace egl {
   void sws_t::apply_colorspace(const video::sunshine_colorspace_t &colorspace, bool is_yuv444) {
     auto color_p = video::color_vectors_from_colorspace(colorspace, true);
 
-    std::string_view members[] {
+    std::array<std::string_view, 5> members {
       util::view(color_p->color_vec_y),
       util::view(color_p->color_vec_u),
       util::view(color_p->color_vec_v),
@@ -1077,7 +1107,7 @@ namespace egl {
       util::view(color_p->range_uv),
     };
 
-    color_matrix.update(members, sizeof(members) / sizeof(decltype(members[0])));
+    color_matrix.update(members.data(), members.size());
 
     int planesCount = is_yuv444 ? 3 : 2;
 
@@ -1340,7 +1370,7 @@ namespace egl {
   }
 
   int sws_t::blank(gl::frame_buf_t &fb, int offsetX_, int offsetY_, int width, int height, bool is_yuv444) {
-    auto f = [&]() {
+    auto f = [this, &offsetX_, &offsetY_, &width, &height]() {
       std::swap(offsetX_, this->offsetX);
       std::swap(offsetY_, this->offsetY);
       std::swap(width, this->out_width);
@@ -1486,14 +1516,14 @@ namespace egl {
   int sws_t::convert_nv12(gl::frame_buf_t &fb) {
     gl::ctx.BindTexture(GL_TEXTURE_2D, loaded_texture);
 
-    GLenum attachments[] {
+    std::array<GLenum, 2> attachments {
       GL_COLOR_ATTACHMENT0,
       GL_COLOR_ATTACHMENT1
     };
 
-    int attachmentsCount = sizeof(attachments) / sizeof(decltype(attachments[0]));
+    int attachmentsCount = attachments.size();
 
-    int drawBuffers = draw_programs_to_buffers(attachments, fb, attachmentsCount, false);
+    int drawBuffers = draw_programs_to_buffers(attachments.data(), fb, attachmentsCount, false);
     if (drawBuffers < 0) {
       return -1;
     }
@@ -1508,15 +1538,15 @@ namespace egl {
   int sws_t::convert_yuv444(gl::frame_buf_t &fb) {
     gl::ctx.BindTexture(GL_TEXTURE_2D, loaded_texture);
 
-    GLenum attachments[] {
+    std::array<GLenum, 3> attachments {
       GL_COLOR_ATTACHMENT0,
       GL_COLOR_ATTACHMENT1,
       GL_COLOR_ATTACHMENT2
     };
 
-    int attachmentsCount = sizeof(attachments) / sizeof(decltype(attachments[0]));
+    int attachmentsCount = attachments.size();
 
-    int drawBuffers = draw_programs_to_buffers(attachments, fb, attachmentsCount, true);
+    int drawBuffers = draw_programs_to_buffers(attachments.data(), fb, attachmentsCount, true);
     if (drawBuffers < 0) {
       return -1;
     }

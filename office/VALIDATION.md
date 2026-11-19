@@ -56,3 +56,21 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - 以上证明Windows原生读取和两端实现可构建、协议授权与逻辑测试通过；**没有代替真实HTTPS写入及文字图标变化的验收**。准备完成后，用户明确同意立即切换，已按[部署记录](DEPLOYMENT.md)更新运行服务并保留回退版本。详见[协议与兼容性边界](DISPLAY_SCALE.md)。
 - 新服务与实际子进程路径均已核对为 `b4684b4d`；接口宣告 `OfficeCursorSet=1` 和 `OfficeDisplayScale=1`，配置备份逐文件核对通过，原配置保持不变。配套 Moonlight Desk 0.3.0 保留原有配对并重新建立串流。Windows 开机时间未变，没有注销用户。
 - 自动回退任务已撤销，上传临时目录已清理，受保护的配置备份、回退脚本和旧版本仍保留。DPI 实际写入、分辨率切换及视觉效果尚未标为通过。
+
+## 合并上游 v2026.1118.30014（2026-11-19）
+
+分支 `chore/upstream-2026.1118`：先收窄办公差异，再以 merge 方式合入上游 tag `v2026.1118.30014`（`37ee7d549391938ab5dc468783fc6dadc23dbc7e`），子模块指针取上游。适配点与取舍见[上游合并说明](UPSTREAM.md)。
+
+- 冲突数（`git merge-tree --write-tree --name-only` 对最新上游 release tag）：合并前 24 个文件，合并后 0（tag 已是祖先）。
+- [成功 CI：44578543983](https://github.com/linrong123/sunshine-desk/actions/runs/44578543983)，来源提交 `924c682f0847199c041b55e8f030d998e2427470`：`office-policy`（独立策略检查）与 Windows AMD64 完整构建（`BUILD_WERROR=ON`）、GoogleTest、MSI/ZIP 打包均通过。
+- GoogleTest：964 项，952 通过，12 跳过，0 失败。跳过项为无 GPU 的 nvenc/amdvce/quicksync 编码器、7 项 Flatpak/外部命令、托盘工作流配置和需授权的虚拟手柄，均为测试自身在缺少 GPU、Flatpak、授权或非托盘配置流程时的 `GTEST_SKIP`。
+- office 测试 23 项全部通过：`OfficePolicy` 4（含新增 `ServerinfoAdvertisesOfficeCapabilities`）、`OfficeCursorTlsTest` 3、`OfficeDisplayScaleTlsTest` 3、`OfficeDisplayScaleTest` 12、`OfficeDisplayScaleIndices` 1。TLS 测试改为通过 `make_verified_https_server()` 加 `office::register_https_routes()` 挂载生产路由。
+- 失败与修复：[44575226342](https://github.com/linrong123/sunshine-desk/actions/runs/44575226342)（`38d7f10a`）因上游新增测试替身 `test_display_geometry.cpp` 仍以 `bool *` 覆盖 `capture()`，在 `-Werror=overloaded-virtual` 下编译失败；`924c682f` 只改替身签名（含 macOS 同类替身），不删测试。更早的 44574570636 因文档输入变更被取消。
+- 本地：`office/tests/Initialize-Office.Tests.ps1` 通过；clang-format 23.1.0 对改动的 C++ 文件无修改。本机没有 C++ 编译器，独立策略检查只在 CI 的 `office-policy` 任务中运行。
+- 原始测试 XML 保存在忽略目录 `.work/ci-artifacts/44578543983/`，不提交。
+
+未验证（不能由上述 CI 推出）：
+
+- Linux 与 macOS 未编译：cursor 的 `std::atomic_bool` 签名改动覆盖 Linux 抓屏、macOS `display.mm` 和 macOS 测试替身，只做了代码审阅。
+- 严格 Doxygen 检查未执行：上游改用 dockle，`docs` 目标不在默认构建中；`dockle.toml` 已列入 office 源文件，但没有在 CI 中构建过。
+- 未部署到任何真实主机；合并后没有在实机上重新验证光标开关、DPI 调整、配对与 Desktop-only 目录。Web UI `getApps` 的 Desktop-only 分支没有单元测试。MSI 未执行安装或卸载。

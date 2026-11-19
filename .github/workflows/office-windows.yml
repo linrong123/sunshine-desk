@@ -34,4 +34,4 @@ jobs:
     with:
       publish_release: 'false'
       release_commit: ${{ github.sha }}
-      release_version: '2026.914.233613'
+      release_version: '2026.1118.30014'

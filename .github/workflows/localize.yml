@@ -14,7 +14,6 @@ on:
 
 jobs:
   localize:
-    if: github.repository == 'SunshineStream/Sunshine'
     name: Update Localization
     permissions:
       contents: read

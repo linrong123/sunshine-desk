@@ -3,6 +3,7 @@
  * @brief Office runtime catalog and cursor policy tests.
  */
 #include "../tests_common.h"
+#include "office/nvhttp_routes.h"
 #include "office/policy.h"
 #include "src/config.h"
 #include "src/process.h"
@@ -20,8 +21,25 @@ TEST(OfficePolicy, StrictCursorVisibility) {
   EXPECT_FALSE(office::cursor_visibility(query_t {{"visible", "0"}, {"visible", "0"}}).has_value());
 }
 
+TEST(OfficePolicy, ServerinfoAdvertisesOfficeCapabilities) {
+  boost::property_tree::ptree tree;
+  tree.put("root.hostname", "office");
+  office::add_serverinfo_capabilities(tree);
+  EXPECT_EQ(tree.get<int>("root.OfficeCursorSet"), 1);
+#ifdef _WIN32
+  EXPECT_EQ(tree.get<int>("root.OfficeDisplayScale"), 1);
+#else
+  EXPECT_FALSE(tree.get_optional<int>("root.OfficeDisplayScale").has_value());
+#endif
+  EXPECT_EQ(tree.get<std::string>("root.hostname"), "office");
+}
+
 TEST(OfficePolicy, RuntimeCatalogNeverReadsUserFile) {
-  auto catalog = proc::parse("nonexistent-office-test-apps.json", true);
+  const bool previous = office::desktop_catalog_only.exchange(true);
+  auto restore = util::fail_guard([previous]() {
+    office::desktop_catalog_only = previous;
+  });
+  auto catalog = proc::parse("nonexistent-office-test-apps.json");
   ASSERT_TRUE(catalog.has_value());
   const auto &apps = catalog->get_apps();
   ASSERT_EQ(apps.size(), 1);

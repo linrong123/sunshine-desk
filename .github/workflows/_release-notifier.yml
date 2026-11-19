@@ -17,8 +17,6 @@ jobs:
   update-blog:
     name: Update blog
     uses: LizardByte/.github/.github/workflows/__call-release-notifier.yml@master
-    if: >-
-      github.repository == 'SunshineStream/Sunshine' && (github.repository_owner == 'LizardByte')
     permissions:
       contents: read
     with:
