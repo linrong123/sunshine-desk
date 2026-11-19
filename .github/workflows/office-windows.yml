@@ -1,5 +1,5 @@
 ---
-name: Office Windows validation
+name: Desk Windows validation
 permissions:
   contents: read
 on:

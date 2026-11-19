@@ -5,7 +5,7 @@
 - 上游仓库：`SunshineStream/Sunshine`，通过 `upstream` remote 跟踪。
 - 初始 tag：`v2026.914.233613`。
 - 初始提交：`63d35f702ee9e362e43263742981836ec0710384`。
-- 独立服务端：`linrong123/sunshine-office`；配套主控端：`linrong123/moonlight-office`。
+- 独立服务端：`linrong123/sunshine-desk`；配套主控端：`linrong123/moonlight-desk`。
 - 保留完整历史；办公新增代码与文档放在 `office/`，不复制一套编码器、网络协议或驱动栈。
 
 ## 边界与补丁位置

@@ -1,6 +1,8 @@
-# Sunshine Office 服务端
+# Sunshine Desk 服务端
 
 这是基于 Sunshine 的公开独立办公版，定位为 Windows 被控端、单一 Desktop 串流。上游源码与历史保留，办公策略集中在本目录，尽量复用安装器、证书配对、编码器、显示设备管理和 Windows 服务。
+
+项目现名为 Sunshine Desk，配套客户端为 Moonlight Desk。`office/` 源码目录、`OfficeCursorSet` 和 `office/cursor` 协议名保持兼容；本次更名不迁移服务或配置，也不改变安装器身份。
 
 当前是可审查的初版实现。尚未完成 Windows 安装包构建、真实机器安装、签名和端到端验收，不能称为完整无人值守交付。现有 MSI 产品标识、服务名和默认配置位置沿用上游，因此不能与官方版并存；请使用全新测试机，不在生产安装上覆盖试用。
 
@@ -18,7 +20,7 @@
 
 1. 在独立干净 Windows 测试机上，从本项目 Windows CI 的 `build-Windows-AMD64` 工件取得 MSI。核对构建提交与 SHA256。CI 只上传工件，不发布发行版，不使用上游签名密钥。
 2. 可运行 `office/windows/Install-Office.ps1 -InstallerPath <MSI文件> -ExpectedSha256 <经核对的哈希>`，先加 `-WhatIf` 查看动作。脚本检测已有 Sunshine 服务或进程即拒绝，不停止服务、不重启。安装包沿用上游 MSI 行为；这不是新的安装器。
-3. 启动后在本机浏览器打开 Sunshine 管理页面，按原流程设置唯一管理账户，再用 Moonlight Office 发起 PIN 配对并在服务端批准。不要把账户、PIN、证书私钥或已配对状态放入仓库、日志附件或共享安装包。不得共享其他用户的配置目录。
+3. 启动后在本机浏览器打开 Sunshine 管理页面，按原流程设置唯一管理账户，再用 Moonlight Desk 发起 PIN 配对并在服务端批准。不要把账户、PIN、证书私钥或已配对状态放入仓库、日志附件或共享安装包。不得共享其他用户的配置目录。
 4. 若需要无头显示器，采用可信来源发布且具有有效 Windows 驱动签名的 VDD 安装包，按其安装说明安装；由 Windows 校验签名。不要启用测试签名、关闭签名校验或把未知 INF 加入驱动库。本项目暂不绑定、下载、打包或自动安装某个 VDD，也没有验证具体型号兼容性。先用实体显示器完成基本验收，再加入 VDD。
 5. 新安装无需运行额外初始化脚本即可启用自动分辨率。仅在需要选定目标显示器或检查已有配置时，用上游 `dxgi-info.exe` 确认目标显示器标识。运行 `office/windows/Initialize-Office.ps1 -ConfigPath <现有配置> -OutputPath <新的候选文件> -DisplayId <显示器标识>`。不指定 ConfigPath 时生成最小候选配置；不指定 DisplayId 时保留原 output_name。工具只生成新文件，拒绝覆盖，不读取或更改 apps.json、配对和服务。
 6. 可选候选配置将 `dd_configuration_option` 设为 `ensure_active`，将分辨率和刷新率设为 `auto`。复核候选后，在停止测试机串流时备份原配置到本机私有目录，再由管理员按上游配置流程应用。不要在仓库保存备份。工具不自动重启服务。
