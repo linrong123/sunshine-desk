@@ -28,6 +28,8 @@
 #include "file_handler.h"
 #include "logging.h"
 #include "nvhttp.h"
+#include "office/authorization.h"
+#include "office/policy.h"
 #include "platform/common.h"
 #include "rtsp.h"
 #include "utility.h"
@@ -816,8 +818,8 @@ namespace config {
 
     20,  // fecPercentage
 
-    ENCRYPTION_MODE_NEVER,  // lan_encryption_mode
-    ENCRYPTION_MODE_OPPORTUNISTIC,  // wan_encryption_mode
+    office::default_encryption_mode,  // lan_encryption_mode (office: mandatory unless configured)
+    office::default_encryption_mode,  // wan_encryption_mode (office: mandatory unless configured)
     0,  // packetsize
     true,  // dscp_tagging
   };
@@ -1998,6 +2000,8 @@ namespace config {
         }
       }
     }
+
+    office::apply_config(vars);
 
     auto it = vars.find("flags"s);
     if (it != std::end(vars)) {

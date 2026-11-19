@@ -74,3 +74,22 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - Linux 与 macOS 未编译：cursor 的 `std::atomic_bool` 签名改动覆盖 Linux 抓屏、macOS `display.mm` 和 macOS 测试替身，只做了代码审阅。
 - 严格 Doxygen 检查未执行：上游改用 dockle，`docs` 目标不在默认构建中；`dockle.toml` 已列入 office 源文件，但没有在 CI 中构建过。
 - 未部署到任何真实主机；合并后没有在实机上重新验证光标开关、DPI 调整、配对与 Desktop-only 目录。Web UI `getApps` 的 Desktop-only 分支没有单元测试。MSI 未执行安装或卸载。
+
+## 直连授权（2026-11-19）
+
+分支 `feat/direct-auth`：首次配对弹窗、每次连接确认（`/office/connect-request`、launch/resume 闸门、`OfficeConnectConfirm`）、托盘授权管理、加密默认 2。设计与限制见[直连授权](CONNECTION.md)。
+
+- [成功 CI：44598281947](https://github.com/linrong123/sunshine-desk/actions/runs/44598281947)，来源提交 `b54a886f14f6011f9973c5f4394b79cea32fa278`：`office-policy` 与 Windows AMD64 完整构建（`BUILD_WERROR=ON`）、GoogleTest、MSI/ZIP 打包均通过。
+- GoogleTest：996 项，984 通过，12 跳过，0 失败；跳过项与上游合并时相同。新增 32 项全部通过：`ConnectConfirmTest` 9、`ConnectConfirmState` 1、`OfficeAuthorizationTest` 6、`OfficeConfigTest` 4、`OfficeConnectRequestTlsTest` 6、`OfficeEncryptionDefaults` 1、`PromptManagerTest` 4、`PromptPin` 1；`SystemTrayTest` 改动后 11 项通过、1 项按原逻辑跳过。
+- 失败与修复：[44596175477](https://github.com/linrong123/sunshine-desk/actions/runs/44596175477)（`0f361b61`）因未定义 `UNICODE` 时 `IDC_ARROW` 为窄字符资源号，`LoadCursorW(nullptr, IDC_ARROW)` 编译失败；`b54a886f` 改用 `LoadCursorA`。
+- 原始测试 XML 保存在忽略目录 `.work/ci-artifacts/44598281947/`，不提交。
+- 严格 Doxygen 仍未在 CI 中执行；新文件已列入 `dockle.toml` 并逐项写了文档注释。Linux 与 macOS 未编译，非 Windows 空实现只做了代码审阅。
+- 本地：clang-format 23.1.0 对改动的 C++ 文件无修改；本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行。
+- 复核后修正（`856deb20`）：身份改为按 TLS 连接绑定；超限弹窗在空出窗口后弹出；denied/expired 结果保留的 30 秒内 `start` 不再弹窗、`cancel` 不清除；托盘开关写回改为临时文件加改名。[成功 CI：44606312499](https://github.com/linrong123/sunshine-desk/actions/runs/44606312499)，来源提交 `856deb2053e034105c3f8cf63d3f9e7528f433c5`：GoogleTest 1000 项，988 通过，12 跳过（同上），0 失败；新增 `IdentityFollowsTheConnectionNotTheLatestHandshake`、`OverLimitRequestIsShownAfterAnAnswerFreesASlot`、`DeniedAndExpiredResultsActAsCooldown`、`FailedPersistLeavesTheConfigFileUnchanged` 4 项与改动的既有用例均通过。原始 XML 在 `.work/ci-artifacts/44606312499/`。
+
+待实机验收（不能由 CI 推出）：
+
+- 首次配对弹窗的显示、PIN 校验、允许/拒绝与超时关闭；同时 3 个以上请求的回退。
+- 托盘「已授权设备」禁用/启用/删除（含确认框）与断流；「每次连接需本机确认」开关写回配置。
+- 开启确认后 Moonlight Desk 发起请求、被控端允许/拒绝/超时、断线 120 秒内免确认恢复、退出应用后需重新确认；官方 Moonlight 收到 403 后在本机允许并重试。
+- 锁屏或服务模式下弹窗所在会话；加密默认 2 对旧客户端的拒绝提示。

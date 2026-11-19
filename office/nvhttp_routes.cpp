@@ -8,15 +8,18 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // lib includes
 #include <boost/property_tree/xml_parser.hpp>
 
 // local includes
+#include "office/authorization.h"
 #include "office/display_scale.h"
 #include "office/nvhttp_routes.h"
 #include "office/policy.h"
 #include "src/globals.h"
+#include "src/network.h"
 
 namespace office {
   namespace {
@@ -36,6 +39,7 @@ namespace office {
       https_route_t {"^/office/cursor$", "GET", cursor},
       https_route_t {"^/office/display-scale$", "GET", display_scale},
       https_route_t {"^/office/display-scale$", "POST", display_scale},
+      https_route_t {"^/office/connect-request$", "GET", connect_request_handler},
     };
 
     /**
@@ -49,6 +53,17 @@ namespace office {
       response->write(data.str());
       response->close_connection_after_response = true;
     }
+
+    /**
+     * @brief Identity of the client behind a verified request.
+     * @param request Verified GameStream HTTPS request.
+     * @return Certificate, paired name, and source address.
+     */
+    client_identity_t request_identity(const https_request_t &request) {
+      const auto peer = request->remote_endpoint();
+      auto [cert, name] = nvhttp::office_verified_client(peer);
+      return {std::move(cert), std::move(name), net::addr_to_normalized_string(peer.address())};
+    }
   }  // namespace
 
   void add_serverinfo_capabilities(boost::property_tree::ptree &tree) {
@@ -56,6 +71,7 @@ namespace office {
 #ifdef _WIN32
     tree.put("root.OfficeDisplayScale", 1);
 #endif
+    add_connect_capability(tree);
   }
 
   void register_https_routes(https_server_t &server) {
@@ -109,5 +125,23 @@ namespace office {
       tree.put("root.message", result.message);
     }
     write_xml(response, tree);
+  }
+
+  void connect_request_handler(https_response_t response, https_request_t request) {
+    const auto args = request->parse_query_string();
+    std::vector<std::string> actions;
+    const auto [first, last] = args.equal_range("action");
+    for (auto it = first; it != last; ++it) {
+      actions.push_back(it->second);
+    }
+    write_xml(response, connect_request(actions, request_identity(request)));
+  }
+
+  bool reject_unapproved_stream(boost::property_tree::ptree &tree, const std::string_view result_field, const https_request_t &request) {
+    return reject_unapproved_stream(tree, result_field, request_identity(request));
+  }
+
+  void quit_current_client(const https_request_t &request) {
+    client_quit(nvhttp::office_verified_client(request->remote_endpoint()).first);
   }
 }  // namespace office

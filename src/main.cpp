@@ -40,6 +40,7 @@
 #include "logging.h"
 #include "main.h"
 #include "nvhttp.h"
+#include "office/authorization_ui.h"
 #include "office/policy.h"
 #include "platform/permissions.h"
 #include "process.h"
@@ -493,6 +494,10 @@ int main(int argc, char *argv[]) {
   if (shutdown_event->peek()) {
     return lifetime::desired_exit_code;
   }
+
+  // Office: host prompts for pairing and connection requests (Windows only; no-op elsewhere).
+  // Started before nvhttp so per-connection approval is in effect from the first request.
+  const office::authorization_ui_t authorization_ui;
 
   std::jthread httpThread {nvhttp::start};
   std::jthread configThread {confighttp::start};

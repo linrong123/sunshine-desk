@@ -20,6 +20,14 @@ namespace office {
   inline std::atomic_bool desktop_catalog_only {false};
 
   /**
+   * @brief Default LAN and WAN video encryption mode: mandatory (`config::ENCRYPTION_MODE_MANDATORY`).
+   *
+   * Applies only when `lan_encryption_mode` or `wan_encryption_mode` is absent from the configuration;
+   * explicit values are honored unchanged.
+   */
+  inline constexpr int default_encryption_mode = 2;
+
+  /**
    * @brief Validate the explicit visibility parameter without changing cursor state.
    * @tparam Query Associative query container preserving duplicate keys.
    * @param args Parsed query parameters, including duplicate keys.

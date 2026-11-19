@@ -45,6 +45,14 @@ inputs = [
   "office/nvhttp_routes.h",
   "office/nvhttp_routes.cpp",
   "office/windows/display_scale.cpp",
+  "office/connect_confirm.h",
+  "office/connect_confirm.cpp",
+  "office/authorization.h",
+  "office/authorization.cpp",
+  "office/authorization_ui.h",
+  "office/authorization_ui.cpp",
+  "office/tray_devices.h",
+  "office/windows/authorization_ui.cpp",
 ]
 image_paths = ["docs/images"]
 predefined = [
