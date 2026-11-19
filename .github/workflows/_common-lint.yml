@@ -17,8 +17,7 @@ jobs:
   lint:
     name: Common Lint
     uses: LizardByte/.github/.github/workflows/__call-common-lint.yml@master
-    if: >-
-      github.repository == 'SunshineStream/Sunshine' && (github.repository != 'LizardByte/.github')
+    if: ${{ github.repository != 'LizardByte/.github' }}
     permissions:
       contents: read
       pull-requests: read

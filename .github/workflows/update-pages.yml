@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   prep:
-    if: github.repository == 'SunshineStream/Sunshine'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,7 +32,6 @@ jobs:
           retention-days: 1
 
   call-jekyll-build:
-    if: github.repository == 'SunshineStream/Sunshine'
     needs: prep
     permissions:
       contents: read
