@@ -85,6 +85,7 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - 原始测试 XML 保存在忽略目录 `.work/ci-artifacts/44598281947/`，不提交。
 - 严格 Doxygen 仍未在 CI 中执行；新文件已列入 `dockle.toml` 并逐项写了文档注释。Linux 与 macOS 未编译，非 Windows 空实现只做了代码审阅。
 - 本地：clang-format 23.1.0 对改动的 C++ 文件无修改；本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行。
+- 复核后修正（`856deb20`）：身份改为按 TLS 连接绑定；超限弹窗在空出窗口后弹出；denied/expired 结果保留的 30 秒内 `start` 不再弹窗、`cancel` 不清除；托盘开关写回改为临时文件加改名。[成功 CI：44606312499](https://github.com/linrong123/sunshine-desk/actions/runs/44606312499)，来源提交 `856deb2053e034105c3f8cf63d3f9e7528f433c5`：GoogleTest 1000 项，988 通过，12 跳过（同上），0 失败；新增 `IdentityFollowsTheConnectionNotTheLatestHandshake`、`OverLimitRequestIsShownAfterAnAnswerFreesASlot`、`DeniedAndExpiredResultsActAsCooldown`、`FailedPersistLeavesTheConfigFileUnchanged` 4 项与改动的既有用例均通过。原始 XML 在 `.work/ci-artifacts/44606312499/`。
 
 待实机验收（不能由 CI 推出）：
 
