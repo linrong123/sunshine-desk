@@ -7,13 +7,14 @@
 ## 构建与安装
 
 1. 在本仓库 [Actions → Desk Windows validation](https://github.com/linrong123/sunshine-desk/actions/workflows/office-windows.yml) 手动运行，或向 main 推送相关修改。
-2. 流程复用上游 Windows AMD64 构建、完整测试和 MSI/ZIP 打包；成功后下载 `build-Windows-AMD64` 工件。首轮构建尚需实际 CI 验证，不能把准备好工作流视为已生成安装包。
+2. Windows AMD64 已通过[完整 CI](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599)：644 例测试中 639 通过、5 跳过、0 失败，MSI/ZIP 已生成。下载 [`build-Windows-AMD64` 工件](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599/artifacts/14522309053)；来源提交为 `4fa4cf2e`，文件 SHA256 和测试边界见下方验证记录。
 3. 在干净 Windows 测试机核对包的提交与哈希，按[办公安装与初始化](https://github.com/linrong123/sunshine-desk/blob/main/office/README.md#windows-安装与初始化)安装，完成原有管理账户设置与 PIN 配对。MSI 产品标识和服务沿用上游，目前不能与官方版并存。当前工件是未签名测试版本。
 4. 有实体显示器时可直接验收桌面、自动分辨率和光标开关；无头/VDD 适配作为后续部署步骤，不阻塞本版核心功能构建。
 
 - [办公使用说明与协议](https://github.com/linrong123/sunshine-desk/blob/main/office/README.md)
 - [架构和上游合并维护](https://github.com/linrong123/sunshine-desk/blob/main/office/UPSTREAM.md)
-- [已完成检查与待验收项](https://github.com/linrong123/sunshine-desk/blob/main/office/VALIDATION.md)
+- [已完成检查、SHA256 与待验收项](https://github.com/linrong123/sunshine-desk/blob/main/office/VALIDATION.md)
+- [已有官方安装的可回滚试用方案](https://github.com/linrong123/sunshine-desk/blob/main/office/TRIAL.md)
 - [客户端仓库](https://github.com/linrong123/moonlight-desk)
 - [服务端仓库](https://github.com/linrong123/sunshine-desk)
 

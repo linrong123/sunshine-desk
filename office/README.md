@@ -4,7 +4,7 @@
 
 项目现名为 Sunshine Desk，配套客户端为 Moonlight Desk。`office/` 源码目录、`OfficeCursorSet` 和 `office/cursor` 协议名保持兼容；本次更名不迁移服务或配置，也不改变安装器身份。
 
-当前是可审查的初版实现。尚未完成 Windows 安装包构建、真实机器安装、签名和端到端验收，不能称为完整无人值守交付。现有 MSI 产品标识、服务名和默认配置位置沿用上游，因此不能与官方版并存；请使用全新测试机，不在生产安装上覆盖试用。
+Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599)完成构建、测试及 MSI/ZIP 打包：639 通过、5 跳过、0 失败。尚未完成真实机器安装、发行版签名和双端连接验收，不能称为完整无人值守交付。现有 MSI 产品标识、服务名和默认配置位置沿用上游，因此不能与官方版并存；请使用全新测试机，不在生产安装上覆盖试用。
 
 ## 已实现的行为
 
@@ -51,6 +51,6 @@
 - 完整 GoogleTest 新增 `tests/unit/test_office.cpp`，检查严格参数及固定运行目录。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
-- 必须补齐：CI 实际通过、MSI 干净安装/卸载、首次账户与配对、未授权请求和明文路由拒绝、重复 cursor set、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。未验证事项不得写成已通过。
+- 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。
 
-详见[架构与上游维护](UPSTREAM.md)。
+详见[验证结果和工件哈希](VALIDATION.md)、[架构与上游维护](UPSTREAM.md)和[可回滚试用方案](TRIAL.md)。

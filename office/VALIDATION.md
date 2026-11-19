@@ -1,28 +1,48 @@
-# 初版验证记录
+# Sunshine Desk 首版验证记录
 
-验证日期：2026-11-19。以下记录区分本机检查与待验证项，不能代替 Windows 端到端验收。
+验证日期：2026-11-19。本记录证明 Windows AMD64 代码可构建、测试及打包通过；尚未在用户 Windows 安装或完成 Moonlight Desk 双端连接验收。
 
-## 已通过
+## 构建与交付
 
-- Apple clang 21.0.0，C++17，`-Wall -Wextra -Werror` 编译并运行独立 cursor 策略测试：缺失、空值、非法值和重复参数拒绝；0/1 接受；重复隐藏保持隐藏。
-- 在项目内部隔离目录运行 PowerShell 7.5.0 的配置工具测试：保留原配置、保留其他设置、auto 替换、输出幂等、拒绝覆盖、拒绝显示器标识换行。使用临时合成文件，未触碰真实配置。
-- 安装包装脚本通过 PowerShell 语法解析；未调用 Windows 安装器。
-- 三平台初始 apps.json 解析有效，均仅 Desktop。
-- 所有工作流 YAML 解析有效；上游自动入口每个 job 均带源仓库条件。独立办公 CI 仅请求读取权限，不传发布和签名密钥。
-- 已核对 C++ 与 Web 显示配置默认值均为 ensure_active，分辨率/刷新率沿用上游 auto；显式配置仍由原解析流程覆盖默认值。新增 GoogleTest 覆盖空配置和显式覆盖，待 Windows CI 运行。
-- 修改文件按仓库 clang-format 格式化；`git diff --check` 通过。
+- 仓库：[`linrong123/sunshine-desk`](https://github.com/linrong123/sunshine-desk)。
+- [成功 CI：44508528599](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599)，构建来源提交：[`4fa4cf2e6b9e29d398b9eabb7abf7e669ee02f44`](https://github.com/linrong123/sunshine-desk/tree/4fa4cf2e6b9e29d398b9eabb7abf7e669ee02f44)。
+- 完整 C++ 编译、Doxygen 文档检查、Windows 依赖链接检查、配置工具测试、GoogleTest、MSI/ZIP 打包均通过；没有关闭 Werror、文档检查或测试失败退出。
+- [下载 `build-Windows-AMD64` 工件](https://github.com/linrong123/sunshine-desk/actions/runs/44508528599/artifacts/14522309053)。工件是未签名测试构建，内部文件、MSI 身份与服务仍保持 Sunshine 兼容名称。需要按 GitHub 工件保留期限及时下载保存。
 
-## 待验证
+| 文件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `Sunshine-Windows-AMD64-installer.msi` | 34,027,943 | `d6951a16a4d2e91fcc418287101e3f7f9b25e4f30561990f5e931d0058d22244` |
+| `Sunshine-Windows-AMD64-lite.zip` | 38,425,573 | `039d8244ab25110a85e3498d280d8669fe2f456367eeeeede6d6724972687176` |
 
-- 新增 OfficeCursorTlsTest 复用生产 TLS 认证路径，自动验证证书授权与 cursor 幂等行为；尚待下次 CI 执行，不作为真实 Moonlight 连接验收。
-- Sunshine 完整构建与新增/原有 GoogleTest；Windows AMD64 MSI 和 ZIP 工件是否生成。
-- MSI 干净安装/卸载、服务启动、首次账户设置、PIN 配对。
-- TLS 无证书、未配对证书、禁用客户端证书、明文 HTTP 对 cursor 路由的拒绝；已配对客户端设置及画面观察。
-- Windows Desktop Duplication 下连续显隐、重连、锁屏/解锁后恢复、不同会话边界。
-- 指定 signed VDD 的来源、签名、安装、支持模式、动态分辨率/刷新率和恢复表现。当前不自动下载/安装或推荐特定驱动。
+实际 ZIP CRC 检查通过，包含 `Sunshine/sunshine.exe`、`Sunshine/tools/sunshinesvc.exe`，其中 `Sunshine/assets/apps.json` 已核实仅 Desktop。已核对 MSI 复合文件头；这不等于执行过安装或验证过卸载。
 
-开发环境仅增加忽略目录中的临时工具，未替换正在运行的 Sunshine，未修改 Windows 或 Mac 配置，未重启。没有发行版签名或无人值守安装验收结论。
+本轮交付另在忽略目录 `.work/ci-artifacts/44508528599/` 保存原始测试 XML、run/工件元数据、下载文件和 `receipt.json`（来源提交、逐文件哈希及测试计数）。不把二进制、真实账户或配置备份提交到仓库。
 
-## 首次 Windows CI 问题修复
+## 真实测试 XML
 
-首次完整构建发现 MSYS2 已提供 OpenSSL 4.1，上游 ASN1_STRING_length 已弃用且 Werror 阻止编译。按 OpenSSL 官方接口历史在 4.1 以上使用 ASN1_STRING_get_length，旧版本保留原调用；同步调整证书公共名测试。不关闭警告、不跳过加密或授权测试。修复后的完整结果待重跑确认。
+根据下载的 `tests-Windows-AMD64/test_results.xml` 解析：**共 644 例，639 通过、5 跳过、0 失败、0 错误、0 禁用**；测试耗时 267.645 秒。不能把跳过计入通过数量。
+
+| 办公新增测试组 | 数量 | 已验证行为 |
+| --- | ---: | --- |
+| `OfficePolicy` | 3，全部通过 | 严格 cursor 参数；固定 Desktop 不读取用户应用文件；空配置 ensure_active/auto 与显式 disabled/manual 覆盖 |
+| `OfficeCursorTlsTest` | 3，全部通过 | 已配对幂等 set、非法参数不改状态；未知/禁用/解除配对证书拒绝；无客户端证书和明文请求无法到达处理器 |
+
+TLS 组使用生产服务器类型和认证回调、环回临时端口及临时合成证书，各例约 0.12 秒；没有访问真实主机账户或配对状态。
+
+5 个跳过项：
+
+- 1 例仅用于配置 Windows runner 托盘图标显示；此前独立托盘初始化步骤已执行通过。
+- 3 例因 CI 不具备可用 NVENC、AMD VCE、Intel Quick Sync 编码器；不构成这三种真实硬件编码器的验收。
+- 1 例为上游已标注的 Windows CI 外部命令 XFAIL。
+
+## 必要修复和本地检查
+
+- MSYS2 OpenSSL 4.1 已弃用旧 ASN.1 长度 API；按[官方接口历史](https://docs.openssl.org/4.1/man3/ASN1_STRING_length/)在 4.1 以上使用新 API，旧版保留兼容分支，未降低 Werror。本机 OpenSSL 3 的旧分支表达式也通过严格编译与长度检查。
+- 根 README 办公链接改为公开仓库完整 URL，避免上游 Doxygen INPUT 外的相对链接失败。以官方校验过的 Doxygen 1.18.0 在项目隔离目录实际检查 README、源文件和办公策略头，保持文档警告为错误，零警告通过；完整 Windows CI 的原文档流程亦通过。
+- 本地独立 C++ 策略测试、PowerShell 配置工具测试及安装脚本语法解析通过。配置工具验证原文件不变、其他配置保留、输出幂等、拒绝覆盖和换行注入。
+
+## 待交接的边界
+
+- 尚未完成真实 MSI 安装/卸载、首次账户设置与配对、真实 Moonlight Desk 串流画面、动态分辨率、锁屏/解锁后恢复、VDD 模式和实体显示器回退验收。
+- 现有主机的备用管理命令环境未能启动、来宾执行未获开放，回滚入口尚未证明可用；没有据此改服务、安装包、网络、驱动或重启。具体步骤见[可回滚试用方案](TRIAL.md)。
+- 后续测试抗挂死增强：客户端应显式设置 `timeout_connect`，CI 测试步骤宜增加总时限。当前 fixture 的服务端握手和客户端请求有超时，但沿用的同步 TLS 析构及线程 join 没有独立 deadline，不能宣称所有路径均严格有界。这是后续增强，不是本轮运行失败；本轮完整测试已正常退出通过，未改生产 TLS 析构。
