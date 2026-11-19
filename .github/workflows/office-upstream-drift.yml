@@ -1,0 +1,109 @@
+---
+name: Desk upstream drift
+
+# Weekly read-only check: would merging the latest upstream release tag conflict with this fork?
+# The job only fetches from upstream and writes a step summary; it never pushes or writes elsewhere.
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_URL: https://github.com/LizardByte/Sunshine.git
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find latest upstream release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(git ls-remote --tags --refs --sort=-v:refname "$UPSTREAM_URL" 'refs/tags/v*' \
+            | grep -v '\^{}$' | head -n 1 | sed 's|.*refs/tags/||')"
+          if [ -z "$tag" ]; then
+            echo "::error::No upstream release tag found"
+            exit 1
+          fi
+          git fetch --no-tags --quiet "$UPSTREAM_URL" "refs/tags/${tag}:refs/tags/${tag}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse "${tag}^{commit}")" >> "$GITHUB_OUTPUT"
+
+      - name: Simulate merge
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          TAG_COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          set -uo pipefail
+          base="$(git merge-base HEAD "$TAG")"
+          {
+            echo "## Upstream drift"
+            echo
+            echo "- Latest upstream release: \`${TAG}\` (\`${TAG_COMMIT}\`)"
+            echo "- Fork head: \`$(git rev-parse HEAD)\`"
+            echo "- Merge base: \`${base}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "- Status: already merged" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          added_workflows="$(git diff --name-only --diff-filter=A "$base" "$TAG" -- .github/workflows)"
+          {
+            echo
+            echo "### Workflow files added upstream since the merge base"
+            echo
+            if [ -n "$added_workflows" ]; then
+              echo "Review triggers before merging: new triggered workflows become active on push to main."
+              echo
+              echo '```'
+              echo "$added_workflows"
+              echo '```'
+            else
+              echo "None."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          result="$(git merge-tree --write-tree --name-only --no-messages HEAD "$TAG")"
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            echo "::error::git merge-tree failed with status ${status}"
+            exit "$status"
+          fi
+          conflicts="$(printf '%s\n' "$result" | tail -n +2 | sed '/^$/d')"
+          {
+            echo
+            echo "### Conflicting files"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "None; the merge is clean."
+            else
+              echo "$(printf '%s\n' "$conflicts" | wc -l) file(s):"
+              echo
+              echo '```'
+              echo "$conflicts"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$status" -eq 1 ]; then
+            echo "::error::Merging ${TAG} conflicts in $(printf '%s\n' "$conflicts" | wc -l) file(s); see the job summary"
+            exit 1
+          fi
