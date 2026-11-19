@@ -65,7 +65,7 @@ Microsoft 的 [DisplayConfigGetDeviceInfo 文档](https://learn.microsoft.com/en
 cmake-build-<配置>/tests/test_sunshine --gtest_filter="OfficeDisplayScale*:OfficeCursorTlsTest.*"
 ```
 
-Windows CI 入口为 `.github/workflows/office-windows.yml`，调用现有 Windows AMD64 完整构建和 GoogleTest；不会执行真实显示比例写入。公共编译清单包含 core 与 Windows 实现，`docs/Doxyfile` 纳入 `office/`，严格 Doxygen 文档检查覆盖新符号。
+Windows CI 入口为 `.github/workflows/office-windows.yml`，调用现有 Windows AMD64 完整构建和 GoogleTest；不会执行真实显示比例写入。公共编译清单包含 core 与 Windows 实现，`dockle.toml` 的 `[targets.doxygen] inputs` 逐个列入 `office/` 源文件，严格 Doxygen 文档检查覆盖新符号。
 
 本地独立 mock 测试通过14项，启用 `-Wall -Wextra -Werror`；完整Windows CI及新增生产TLS路由测试已通过，记录见[验证结果](VALIDATION.md)。另已用一次性隐藏只读探针在真实主机的控制台会话核对私有查询与有效DPI一致，任务和临时文件随后删除；该探针没有调用此HTTPS接口，也没有写入DPI、重启或注销。
 

@@ -38,6 +38,13 @@ inputs = [
   "docs/building.md",
   "docs/contributing.md",
   "src",
+  # Office fork sources (listed individually so office/*.md stays out of the strict build).
+  "office/policy.h",
+  "office/display_scale.h",
+  "office/display_scale.cpp",
+  "office/nvhttp_routes.h",
+  "office/nvhttp_routes.cpp",
+  "office/windows/display_scale.cpp",
 ]
 image_paths = ["docs/images"]
 predefined = [
