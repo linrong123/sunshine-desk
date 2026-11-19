@@ -79,7 +79,11 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 
 分支 `feat/direct-auth`：首次配对弹窗、每次连接确认（`/office/connect-request`、launch/resume 闸门、`OfficeConnectConfirm`）、托盘授权管理、加密默认 2。设计与限制见[直连授权](CONNECTION.md)。
 
-- Windows CI：待记录。
+- [成功 CI：44598281947](https://github.com/linrong123/sunshine-desk/actions/runs/44598281947)，来源提交 `b54a886f14f6011f9973c5f4394b79cea32fa278`：`office-policy` 与 Windows AMD64 完整构建（`BUILD_WERROR=ON`）、GoogleTest、MSI/ZIP 打包均通过。
+- GoogleTest：996 项，984 通过，12 跳过，0 失败；跳过项与上游合并时相同。新增 32 项全部通过：`ConnectConfirmTest` 9、`ConnectConfirmState` 1、`OfficeAuthorizationTest` 6、`OfficeConfigTest` 4、`OfficeConnectRequestTlsTest` 6、`OfficeEncryptionDefaults` 1、`PromptManagerTest` 4、`PromptPin` 1；`SystemTrayTest` 改动后 11 项通过、1 项按原逻辑跳过。
+- 失败与修复：[44596175477](https://github.com/linrong123/sunshine-desk/actions/runs/44596175477)（`0f361b61`）因未定义 `UNICODE` 时 `IDC_ARROW` 为窄字符资源号，`LoadCursorW(nullptr, IDC_ARROW)` 编译失败；`b54a886f` 改用 `LoadCursorA`。
+- 原始测试 XML 保存在忽略目录 `.work/ci-artifacts/44598281947/`，不提交。
+- 严格 Doxygen 仍未在 CI 中执行；新文件已列入 `dockle.toml` 并逐项写了文档注释。Linux 与 macOS 未编译，非 Windows 空实现只做了代码审阅。
 - 本地：clang-format 23.1.0 对改动的 C++ 文件无修改；本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行。
 
 待实机验收（不能由 CI 推出）：
