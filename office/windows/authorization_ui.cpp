@@ -363,7 +363,7 @@ namespace office {
       window_class.cbSize = sizeof(window_class);
       window_class.lpfnWndProc = prompt_window_proc;
       window_class.hInstance = instance;
-      window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+      window_class.hCursor = LoadCursorA(nullptr, IDC_ARROW);  // IDC_ARROW is a narrow resource id without UNICODE.
       window_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
       window_class.lpszClassName = prompt_class_name;
       if (!RegisterClassExW(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
