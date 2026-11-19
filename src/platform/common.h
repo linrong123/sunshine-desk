@@ -5,6 +5,7 @@
 #pragma once
 
 // standard includes
+#include <atomic>
 #include <bitset>
 #include <filesystem>
 #include <functional>
@@ -711,7 +712,7 @@ namespace platf {
      * @retval capture_e::error On error
      * @retval capture_e::reinit When need of reinitialization
      */
-    virtual capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) = 0;
+    virtual capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, std::atomic_bool *cursor) = 0;
 
     /**
      * @brief Allocate an image buffer compatible with this display backend.

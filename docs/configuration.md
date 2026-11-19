@@ -1103,7 +1103,7 @@ supported on the current platform.
     <tr>
         <td>Default</td>
         <td colspan="2">@code{}
-            disabled
+            ensure_active
             @endcode</td>
     </tr>
     <tr>

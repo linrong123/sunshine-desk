@@ -27,6 +27,7 @@
 #include "display_device.h"
 #include "input.h"
 #include "logging.h"
+#include "office/policy.h"
 #include "platform/common.h"
 #include "process.h"
 #include "system_tray.h"
@@ -664,11 +665,16 @@ namespace proc {
   /**
    * @brief Parse serialized text into the corresponding runtime representation.
    */
-  std::optional<proc::proc_t> parse(const std::string &file_name) {
+  std::optional<proc::proc_t> parse(const std::string &file_name, bool desktop_only) {
     pt::ptree tree;
 
     try {
-      pt::read_json(file_name, tree);
+      if (desktop_only) {
+        std::istringstream catalog {std::string {office::desktop_apps}};
+        pt::read_json(catalog, tree);
+      } else {
+        pt::read_json(file_name, tree);
+      }
 
       auto &apps_node = tree.get_child("apps"s);
       auto &env_vars = tree.get_child("env"s);
@@ -799,7 +805,7 @@ namespace proc {
    * @brief Refresh cached platform state from the operating system.
    */
   void refresh(const std::string &file_name) {
-    auto proc_opt = proc::parse(file_name);
+    auto proc_opt = proc::parse(file_name, true);
 
     if (proc_opt) {
       proc = std::move(*proc_opt);

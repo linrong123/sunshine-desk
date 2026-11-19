@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   copr:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Copr
     permissions:
       contents: write  # needed to update releases
@@ -26,7 +27,8 @@ jobs:
 
   cloudsmith:
     name: Cloudsmith
-    if: startsWith(github.repository, 'LizardByte/')
+    if: >-
+      github.repository == 'SunshineStream/Sunshine' && (startsWith(github.repository, 'LizardByte/'))
     needs: copr
     permissions:
       contents: read

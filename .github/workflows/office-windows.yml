@@ -1,0 +1,35 @@
+---
+name: Office Windows validation
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'src_assets/**'
+      - 'office/**'
+      - 'tests/**'
+      - 'cmake/**'
+      - '.github/workflows/office-windows.yml'
+      - '.github/workflows/ci-windows.yml'
+      - 'CMakeLists.txt'
+      - 'third-party/**'
+      - 'package*.json'
+      - 'uv.lock'
+      - 'pyproject.toml'
+  workflow_dispatch:
+jobs:
+  office-policy:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Validate configuration generator
+        shell: pwsh
+        run: ./office/tests/Initialize-Office.Tests.ps1
+  windows-package:
+    uses: ./.github/workflows/ci-windows.yml
+    with:
+      publish_release: 'false'
+      release_commit: ${{ github.sha }}
+      release_version: '2026.914.233613'

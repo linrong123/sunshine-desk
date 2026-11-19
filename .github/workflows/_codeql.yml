@@ -22,7 +22,8 @@ jobs:
   call-codeql:
     name: CodeQL
     uses: LizardByte/.github/.github/workflows/__call-codeql.yml@master
-    if: ${{ github.repository != 'LizardByte/.github' }}
+    if: >-
+      github.repository == 'SunshineStream/Sunshine' && (github.repository != 'LizardByte/.github')
     permissions:
       actions: read
       contents: read

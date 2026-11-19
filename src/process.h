@@ -198,9 +198,10 @@ namespace proc {
    * @brief Parse serialized text into the corresponding runtime representation.
    *
    * @param file_name File name.
+   * @param desktop_only Use the immutable Office catalog instead of reading the file.
    * @return Parsed value or parse status.
    */
-  std::optional<proc::proc_t> parse(const std::string &file_name);
+  std::optional<proc::proc_t> parse(const std::string &file_name, bool desktop_only = false);
 
   /**
    * @brief Initialize proc functions

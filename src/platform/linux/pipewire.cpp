@@ -1008,7 +1008,7 @@ namespace pipewire {
       return false;  // Return to default stream dead handling.
     }
 
-    platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
+    platf::capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, std::atomic_bool *cursor) override {
       auto next_frame = std::chrono::steady_clock::now();
 
       if (pipewire.ensure_stream(mem_type, width, height, target_framerate, dmabuf_infos.data(), n_dmabuf_infos, display_is_nvidia) < 0) {

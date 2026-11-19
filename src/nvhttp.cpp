@@ -31,6 +31,7 @@
 #include "logging.h"
 #include "network.h"
 #include "nvhttp.h"
+#include "office/policy.h"
 #include "platform/common.h"
 #include "process.h"
 #include "rtsp.h"
@@ -1223,6 +1224,7 @@ namespace nvhttp {
 
     tree.put("root.<xmlattr>.status_code", 200);
     tree.put("root.hostname", config::nvhttp.sunshine_name);
+    tree.put("root.OfficeCursorSet", 1);
 
     tree.put("root.appversion", VERSION);
     tree.put("root.GfeVersion", GFE_VERSION);
@@ -1285,6 +1287,27 @@ namespace nvhttp {
     }
 
     return named_cert_nodes;
+  }
+
+  /**
+   * @brief Set global streamed cursor visibility over the paired-client HTTPS channel.
+   * @param response GameStream XML response.
+   * @param request Request containing exactly one visible=0 or visible=1 parameter.
+   */
+  void office_cursor(resp_https_t response, req_https_t request) {
+    const auto visible = office::cursor_visibility(request->parse_query_string());
+    pt::ptree tree;
+    tree.put("root.<xmlattr>.status_code", visible.has_value() ? 200 : 400);
+    if (visible.has_value()) {
+      display_cursor.store(*visible);
+      tree.put("root.cursorVisible", *visible ? 1 : 0);
+    } else {
+      tree.put("root.<xmlattr>.status_message", "Expected exactly one visible=0 or visible=1 parameter");
+    }
+    std::ostringstream data;
+    pt::write_xml(data, tree);
+    response->write(data.str());
+    response->close_connection_after_response = true;
   }
 
   /**
@@ -1693,6 +1716,7 @@ namespace nvhttp {
     https_server.resource["^/pair$"]["GET"] = [](auto resp, auto req) {
       pair<SunshineHTTPS>(resp, req);
     };
+    https_server.resource["^/office/cursor$"]["GET"] = office_cursor;
     https_server.resource["^/applist$"]["GET"] = applist;
     https_server.resource["^/appasset$"]["GET"] = appasset;
     https_server.resource["^/launch$"]["GET"] = [&host_audio](auto resp, auto req) {

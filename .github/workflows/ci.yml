@@ -15,12 +15,14 @@ concurrency:
 
 jobs:
   github-env:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: GitHub Env Debug
     permissions:
       contents: read
     uses: LizardByte/.github/.github/workflows/__call-github-env.yml@master
 
   release-setup:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Release Setup
     outputs:
       publish_release: ${{ steps.release-setup.outputs.publish_release }}
@@ -43,6 +45,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
   build-docker:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Docker
     needs: release-setup
     permissions:
@@ -64,6 +67,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-freebsd:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: FreeBSD
     needs: release-setup
     permissions:
@@ -74,6 +78,7 @@ jobs:
       release_version: ${{ needs.release-setup.outputs.release_version }}
 
   build-homebrew:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Homebrew
     needs: release-setup
     permissions:
@@ -90,6 +95,7 @@ jobs:
       GIT_EMAIL: ${{ secrets.GH_BOT_EMAIL }}
 
   build-macos:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: macOS
     needs: release-setup
     permissions:
@@ -110,6 +116,7 @@ jobs:
         ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_P12_PASSWORD }}
 
   build-linux:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Linux
     needs: release-setup
     permissions:
@@ -120,6 +127,7 @@ jobs:
       release_version: ${{ needs.release-setup.outputs.release_version }}
 
   build-archlinux:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Archlinux
     needs: release-setup
     permissions:
@@ -130,6 +138,7 @@ jobs:
       release_version: ${{ needs.release-setup.outputs.release_version }}
 
   build-alpine:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Alpine
     needs: release-setup
     permissions:
@@ -141,7 +150,8 @@ jobs:
 
   build-linux-copr:
     name: Linux Copr
-    if: github.event_name != 'push'  # releases are handled directly in ci-release.yml
+    if: >-
+      github.repository == 'SunshineStream/Sunshine' && (github.event_name != 'push')
     needs: release-setup
     permissions:
       contents: write  # needed to update releases
@@ -153,6 +163,7 @@ jobs:
       VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
 
   build-linux-flatpak:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Linux Flatpak
     needs: release-setup
     permissions:
@@ -163,6 +174,7 @@ jobs:
       release_version: ${{ needs.release-setup.outputs.release_version }}
 
   build-windows:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Windows
     needs: release-setup
     permissions:
@@ -181,12 +193,14 @@ jobs:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
   test-powershell:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: PowerShell
     permissions:
       contents: read
     uses: ./.github/workflows/ci-powershell.yml
 
   bundle-analysis:
+    if: github.repository == 'SunshineStream/Sunshine'
     name: Bundle Analysis
     needs: release-setup
     permissions:
@@ -198,9 +212,7 @@ jobs:
   coverage:
     name: Coverage-${{ matrix.name }}
     if: >-
-      always() &&
-      !cancelled() &&
-      startsWith(github.repository, 'LizardByte/')
+      github.repository == 'SunshineStream/Sunshine' && (always() && !cancelled() && startsWith(github.repository, 'LizardByte/'))
     needs:
       - build-freebsd
       - build-linux
@@ -283,9 +295,8 @@ jobs:
 
   release:
     name: Release
-    if:
-      needs.release-setup.outputs.publish_release == 'true' &&
-      startsWith(github.repository, 'LizardByte/')
+    if: >-
+      github.repository == 'SunshineStream/Sunshine' && (needs.release-setup.outputs.publish_release == 'true' && startsWith(github.repository, 'LizardByte/'))
     needs:
       - release-setup
       - build-archlinux
@@ -325,9 +336,8 @@ jobs:
 
   release-homebrew-beta:
     name: Release Homebrew Beta
-    if:
-      needs.release-setup.outputs.publish_release == 'true' &&
-      startsWith(github.repository, 'LizardByte/')
+    if: >-
+      github.repository == 'SunshineStream/Sunshine' && (needs.release-setup.outputs.publish_release == 'true' && startsWith(github.repository, 'LizardByte/'))
     needs:
       - release-setup
       - build-homebrew

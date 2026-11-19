@@ -4,6 +4,9 @@
  */
 #pragma once
 
+// standard includes
+#include <atomic>
+
 // local includes
 #include "entry_handler.h"
 #include "thread_pool.h"
@@ -16,7 +19,7 @@ extern thread_pool_util::ThreadPool task_pool;
 /**
  * @brief A boolean flag to indicate whether the cursor should be displayed.
  */
-extern bool display_cursor;
+extern std::atomic_bool display_cursor;
 
 #ifdef _WIN32
   // Declare global singleton used for NVIDIA control panel modifications

@@ -209,7 +209,7 @@ namespace platf::dxgi {
     release_frame();
   }
 
-  capture_e display_base_t::capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) {
+  capture_e display_base_t::capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, std::atomic_bool *cursor) {
     auto adjust_client_frame_rate = [&]() -> DXGI_RATIONAL {
       // Use exactly the requested rate if the client sent an X100 value
       if (client_frame_rate_strict.Numerator > 0) {

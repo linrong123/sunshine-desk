@@ -47,6 +47,7 @@
 #include "logging.h"
 #include "network.h"
 #include "nvhttp.h"
+#include "office/policy.h"
 #include "platform/common.h"
 #include "process.h"
 #include "rtsp.h"
@@ -1030,7 +1031,7 @@ namespace confighttp {
     print_req(request);
 
     try {
-      std::string content = file_handler::read_file(config::stream.file_apps.c_str());
+      std::string content {office::desktop_apps};
       nlohmann::json file_tree = nlohmann::json::parse(content);
 
       // Legacy versions of Sunshine used strings for boolean and integers, let's convert them
@@ -2343,10 +2344,8 @@ namespace confighttp {
 
     // web pages
     server.resource["^/$"]["GET"] = page_handler("index.html");
-    server.resource["^/apps/?$"]["GET"] = page_handler("apps.html");
     server.resource["^/clients/?$"]["GET"] = page_handler("clients.html");
     server.resource["^/config/?$"]["GET"] = page_handler("config.html");
-    server.resource["^/featured/?$"]["GET"] = page_handler("featured.html");
     server.resource["^/logout/?$"]["GET"] = page_handler("logout.html", false);
     server.resource["^/password/?$"]["GET"] = page_handler("password.html");
     server.resource["^/pin/?$"]["GET"] = page_handler("pin.html");
@@ -2356,8 +2355,6 @@ namespace confighttp {
     // rest api
     server.resource["^/api/browse$"]["GET"] = browseDirectory;
     server.resource["^/api/apps$"]["GET"] = getApps;
-    server.resource["^/api/apps$"]["POST"] = saveApp;
-    server.resource["^/api/apps/([0-9]+)$"]["DELETE"] = deleteApp;
     server.resource["^/api/apps/close$"]["POST"] = closeApp;
     server.resource["^/api/clients/list$"]["GET"] = getClients;
     server.resource["^/api/clients/unpair$"]["POST"] = unpair;
