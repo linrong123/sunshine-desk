@@ -40,7 +40,11 @@ TEST(CryptoTest, GeneratedCredentialsExposeSubjectAndVerifySignatures) {
 
   const std::string_view parsed_common_name {
     reinterpret_cast<const char *>(ASN1_STRING_get0_data(common_name_data)),
+#if OPENSSL_VERSION_NUMBER >= 0x40100000L
+    ASN1_STRING_get_length(common_name_data)
+#else
     static_cast<std::size_t>(ASN1_STRING_length(common_name_data))
+#endif
   };
   ASSERT_EQ(parsed_common_name, common_name);
 

@@ -414,7 +414,11 @@ namespace crypto {
 
     return {
       reinterpret_cast<const char *>(ASN1_STRING_get0_data(asn1)),
+#if OPENSSL_VERSION_NUMBER >= 0x40100000L
+      ASN1_STRING_get_length(asn1)
+#else
       static_cast<std::size_t>(ASN1_STRING_length(asn1))
+#endif
     };
   }
 

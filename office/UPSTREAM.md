@@ -12,6 +12,7 @@
 
 | 位置 | 办公差异 | 合并时检查 |
 | --- | --- | --- |
+| `src/crypto.cpp` 与加密测试 | OpenSSL 4.1 使用新 ASN.1 length API，旧版本保留原 API | 在最新 MSYS2 与旧版 OpenSSL 都保留编译兼容；不降低 Werror |
 | `office/policy.h` | 固定 Desktop JSON、严格 cursor 参数校验 | 保持独立，不引入主机私有配置 |
 | `src/process.*` | parse 增加可选固定目录参数，refresh 强制办公目录 | 检查所有生产初始化和重新加载入口仍走 refresh；旧文件不被改写 |
 | `src/config.cpp` 与 Web config 默认值 | 默认 ensure_active，分辨率/刷新率 auto；配置解析仍尊重显式值 | 检查 C++ 与 Web 默认一致，不覆盖已配置 disabled/manual |
