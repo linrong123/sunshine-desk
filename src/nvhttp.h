@@ -368,6 +368,14 @@ namespace nvhttp {
    */
   namespace test_support {
     /**
+     * @brief Construct a loopback-only cursor endpoint using production TLS authorization and handling.
+     * @param cert Test server certificate file.
+     * @param key Test server private key file.
+     * @return Server with an ephemeral port, ready to start in the test thread.
+     */
+    std::shared_ptr<SimpleWeb::ServerBase<SunshineHTTPS>> make_office_cursor_server(const std::string &cert, const std::string &key);
+
+    /**
      * @brief Dispatch a plain-HTTP pairing request through the production handler.
      *
      * @param response HTTP response object to populate.

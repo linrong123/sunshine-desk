@@ -9,8 +9,16 @@
 // standard includes
 #include <atomic>
 #include <filesystem>
+#include <format>
+#include <fstream>
+#include <sstream>
 #include <thread>
 #include <vector>
+
+// lib includes
+#include <boost/property_tree/xml_parser.hpp>
+#include <Simple-Web-Server/client_http.hpp>
+#include <Simple-Web-Server/client_https.hpp>
 
 // local includes
 #include <src/config.h>
@@ -161,4 +169,132 @@ TEST_F(ClientAuthorizationTest, ConcurrentStateChangesRemainConsistent) {
   EXPECT_TRUE(operations_succeeded);
   ASSERT_TRUE(nvhttp::set_client_enabled(uuid, false));
   EXPECT_FALSE(nvhttp::test_support::authorize_client_certificate(credentials.x509));
+}
+
+/**
+ * @brief Exercise the cursor route through the production TLS gate on an ephemeral loopback port.
+ */
+class OfficeCursorTlsTest: public ClientAuthorizationTest {
+protected:
+  /**
+   * @brief Create synthetic credentials and start the isolated HTTPS endpoint.
+   */
+  void SetUp() override {
+    ClientAuthorizationTest::SetUp();
+    original_cursor = display_cursor.load();
+    directory = fs::path {SUNSHINE_TEST_BIN_DIR} / "office_cursor_tls";
+    fs::create_directories(directory);
+    const auto server_credentials = crypto::gen_creds("Office test server", 2048);
+    const auto paired_credentials = crypto::gen_creds("Office paired test client", 2048);
+    const auto unknown_credentials = crypto::gen_creds("Office unknown test client", 2048);
+    write_credentials("server", server_credentials);
+    write_credentials("paired", paired_credentials);
+    write_credentials("unknown", unknown_credentials);
+    paired_uuid = nvhttp::test_support::add_client("office test", paired_credentials.x509, true);
+    ASSERT_FALSE(paired_uuid.empty());
+    server = nvhttp::test_support::make_office_cursor_server(
+      (directory / "server.crt").string(),
+      (directory / "server.key").string()
+    );
+    server_thread = std::jthread([this]() {
+      server->start([this](unsigned short assigned) {
+        port.store(assigned);
+      });
+    });
+    for (int attempt = 0; attempt < 200 && port.load() == 0; ++attempt) {
+      std::this_thread::sleep_for(std::chrono::milliseconds {10});
+    }
+    ASSERT_NE(port.load(), 0);
+    display_cursor.store(true);
+  }
+
+  /**
+   * @brief Stop the endpoint and remove all synthetic credential files.
+   */
+  void TearDown() override {
+    if (server) {
+      server->stop();
+    }
+    if (server_thread.joinable()) {
+      server_thread.join();
+    }
+    server.reset();
+    display_cursor.store(original_cursor);
+    std::error_code ignored;
+    fs::remove_all(directory, ignored);
+    ClientAuthorizationTest::TearDown();
+  }
+
+  /**
+   * @brief Write generated test credentials without printing their contents.
+   * @param name Filename prefix inside the isolated test directory.
+   * @param credentials Synthetic certificate and private key.
+   */
+  void write_credentials(const std::string &name, const crypto::creds_t &credentials) {
+    std::ofstream(directory / (name + ".crt")) << credentials.x509;
+    std::ofstream(directory / (name + ".key")) << credentials.pkey;
+  }
+
+  /**
+   * @brief Request a GameStream XML response using a fresh client connection.
+   * @param target Request path and query.
+   * @param identity Synthetic client identity, or empty for no client certificate.
+   * @return Response XML status code.
+   */
+  int request_status(const std::string &target, const std::string &identity = "paired") {
+    SimpleWeb::Client<SimpleWeb::HTTPS> client {
+      std::format("127.0.0.1:{}", port.load()),
+      false,
+      identity.empty() ? "" : (directory / (identity + ".crt")).string(),
+      identity.empty() ? "" : (directory / (identity + ".key")).string()
+    };
+    client.config.timeout = 5;
+    std::istringstream response {client.request("GET", target)->content.string()};
+    boost::property_tree::ptree tree;
+    boost::property_tree::read_xml(response, tree);
+    return tree.get<int>("root.<xmlattr>.status_code");
+  }
+
+  fs::path directory;  ///< Synthetic credentials, removed after every test.
+  std::string paired_uuid;  ///< Enabled client record for the isolated test server.
+  std::atomic<unsigned short> port {0};  ///< Ephemeral loopback listener port.
+  std::shared_ptr<SimpleWeb::ServerBase<nvhttp::SunshineHTTPS>> server;  ///< Production TLS backend used by the test.
+  std::jthread server_thread;  ///< Listener thread stopped before credentials are removed.
+  bool original_cursor {true};  ///< Global cursor setting restored at teardown.
+};
+
+TEST_F(OfficeCursorTlsTest, PairedSetIsIdempotentAndInvalidInputDoesNotMutateState) {
+  EXPECT_EQ(request_status("/office/cursor?visible=0"), 200);
+  EXPECT_FALSE(display_cursor.load());
+  EXPECT_EQ(request_status("/office/cursor?visible=0"), 200);
+  EXPECT_FALSE(display_cursor.load());
+  EXPECT_EQ(request_status("/office/cursor?visible=0&visible=1"), 400);
+  EXPECT_EQ(request_status("/office/cursor?visible=true"), 400);
+  EXPECT_EQ(request_status("/office/cursor"), 400);
+  EXPECT_FALSE(display_cursor.load());
+  EXPECT_EQ(request_status("/office/cursor?visible=1"), 200);
+  EXPECT_TRUE(display_cursor.load());
+}
+
+TEST_F(OfficeCursorTlsTest, UnknownDisabledAndUnpairedCertificatesCannotChangeCursor) {
+  EXPECT_EQ(request_status("/office/cursor?visible=0", "unknown"), 401);
+  EXPECT_TRUE(display_cursor.load());
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, false));
+  EXPECT_EQ(request_status("/office/cursor?visible=0"), 401);
+  EXPECT_TRUE(display_cursor.load());
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, true));
+  EXPECT_EQ(request_status("/office/cursor?visible=0"), 200);
+  EXPECT_FALSE(display_cursor.load());
+  ASSERT_TRUE(nvhttp::unpair_client(paired_uuid));
+  EXPECT_EQ(request_status("/office/cursor?visible=1"), 401);
+  EXPECT_FALSE(display_cursor.load());
+}
+
+TEST_F(OfficeCursorTlsTest, MissingCertificateAndPlainHttpCannotReachTheHandler) {
+  EXPECT_ANY_THROW(request_status("/office/cursor?visible=0", ""));
+  EXPECT_TRUE(display_cursor.load());
+  SimpleWeb::Client<SimpleWeb::HTTP> plaintext {std::format("127.0.0.1:{}", port.load())};
+  plaintext.config.timeout = 5;
+  EXPECT_ANY_THROW(plaintext.request("GET", "/office/cursor?visible=0"));
+  EXPECT_TRUE(display_cursor.load());
 }

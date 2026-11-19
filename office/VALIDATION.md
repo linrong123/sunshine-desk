@@ -14,6 +14,7 @@
 
 ## 待验证
 
+- 新增 OfficeCursorTlsTest 复用生产 TLS 认证路径，自动验证证书授权与 cursor 幂等行为；尚待下次 CI 执行，不作为真实 Moonlight 连接验收。
 - Sunshine 完整构建与新增/原有 GoogleTest；Windows AMD64 MSI 和 ZIP 工件是否生成。
 - MSI 干净安装/卸载、服务启动、首次账户设置、PIN 配对。
 - TLS 无证书、未配对证书、禁用客户端证书、明文 HTTP 对 cursor 路由的拒绝；已配对客户端设置及画面观察。

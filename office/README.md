@@ -45,6 +45,7 @@
 ## 验证与交接
 
 - 本地独立策略测试：`clang++ -std=c++17 -Wall -Wextra -Werror -I. office/tests/policy.cpp -o <临时测试程序>`，运行生成程序。
+- `OfficeCursorTlsTest` 通过生产 TLS 服务器与认证回调测试已配对幂等 set、未知/禁用/解除配对拒绝、无证书及明文拒绝；使用环回临时端口和临时合成证书，不启动真实主机服务。
 - 完整 GoogleTest 新增 `tests/unit/test_office.cpp`，检查严格参数及固定运行目录。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。

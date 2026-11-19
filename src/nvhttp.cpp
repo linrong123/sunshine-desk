@@ -1624,6 +1624,77 @@ namespace nvhttp {
    */
   std::pair<bool, std::string> get_client_status(const std::string_view cert_pem);
 
+  /**
+   * @brief Authorize the exact enabled paired-client certificate after the TLS handshake.
+   * @param ssl TLS connection presenting the client certificate.
+   * @return One for authorized clients, or zero to reject the connection request.
+   */
+  int verify_paired_client(SSL *ssl) {
+    crypto::x509_t x509 {
+#if OPENSSL_VERSION_MAJOR >= 3
+      SSL_get1_peer_certificate(ssl)
+#else
+      SSL_get_peer_certificate(ssl)
+#endif
+    };
+    if (!x509) {
+      BOOST_LOG(info) << "unknown -- denied"sv;
+      return 0;
+    }
+
+    int verified = 0;
+
+    auto fg = util::fail_guard([&]() {
+      char subject_name[256];
+
+      X509_NAME_oneline(X509_get_subject_name(x509.get()), subject_name, sizeof(subject_name));
+
+      BOOST_LOG(debug) << subject_name << " -- "sv << (verified ? "verified"sv : "denied"sv);
+    });
+
+    std::lock_guard lock {client_auth_mutex()};
+    auto err_str = verify_client_certificate(x509.get());
+    if (err_str) {
+      BOOST_LOG(warning) << "SSL Verification error :: "sv << err_str;
+
+      return verified;
+    }
+
+    // Check if this client is enabled
+    auto pem = crypto::pem(x509);
+    auto [enabled, client_name] = get_client_status(pem);
+    if (!enabled) {
+      BOOST_LOG(info) << "Client is disabled -- denied"sv;
+      return verified;
+    }
+
+    last_verified_client_cert = pem;
+    last_verified_client_name = client_name;
+    verified = 1;
+
+    return verified;
+  }
+
+  /**
+   * @brief Return the existing GameStream authorization failure response.
+   * @param resp HTTPS response for the rejected client.
+   * @param req Request associated with the rejected connection.
+   */
+  void reject_unpaired_client(resp_https_t resp, req_https_t req) {
+    pt::ptree tree;
+    auto g = util::fail_guard([&]() {
+      std::ostringstream data;
+
+      pt::write_xml(data, tree);
+      resp->write(data.str());
+      resp->close_connection_after_response = true;
+    });
+
+    tree.put("root.<xmlattr>.status_code"s, 401);
+    tree.put("root.<xmlattr>.query"s, req->path);
+    tree.put("root.<xmlattr>.status_message"s, "The client is not authorized. Certificate verification failed."s);
+  }
+
   void start() {
     platf::set_thread_name("nvhttp");
     auto shutdown_event = mail::man->event<bool>(mail::shutdown);
@@ -1649,67 +1720,9 @@ namespace nvhttp {
     https_server_t https_server {config::nvhttp.cert, config::nvhttp.pkey};
     http_server_t http_server;
 
-    // Verify certificates after establishing connection
-    https_server.verify = [](SSL *ssl) {
-      crypto::x509_t x509 {
-#if OPENSSL_VERSION_MAJOR >= 3
-        SSL_get1_peer_certificate(ssl)
-#else
-        SSL_get_peer_certificate(ssl)
-#endif
-      };
-      if (!x509) {
-        BOOST_LOG(info) << "unknown -- denied"sv;
-        return 0;
-      }
-
-      int verified = 0;
-
-      auto fg = util::fail_guard([&]() {
-        char subject_name[256];
-
-        X509_NAME_oneline(X509_get_subject_name(x509.get()), subject_name, sizeof(subject_name));
-
-        BOOST_LOG(debug) << subject_name << " -- "sv << (verified ? "verified"sv : "denied"sv);
-      });
-
-      std::lock_guard lock {client_auth_mutex()};
-      auto err_str = verify_client_certificate(x509.get());
-      if (err_str) {
-        BOOST_LOG(warning) << "SSL Verification error :: "sv << err_str;
-
-        return verified;
-      }
-
-      // Check if this client is enabled
-      auto pem = crypto::pem(x509);
-      auto [enabled, client_name] = get_client_status(pem);
-      if (!enabled) {
-        BOOST_LOG(info) << "Client is disabled -- denied"sv;
-        return verified;
-      }
-
-      last_verified_client_cert = pem;
-      last_verified_client_name = client_name;
-      verified = 1;
-
-      return verified;
-    };
-
-    https_server.on_verify_failed = [](resp_https_t resp, req_https_t req) {
-      pt::ptree tree;
-      auto g = util::fail_guard([&]() {
-        std::ostringstream data;
-
-        pt::write_xml(data, tree);
-        resp->write(data.str());
-        resp->close_connection_after_response = true;
-      });
-
-      tree.put("root.<xmlattr>.status_code"s, 401);
-      tree.put("root.<xmlattr>.query"s, req->path);
-      tree.put("root.<xmlattr>.status_message"s, "The client is not authorized. Certificate verification failed."s);
-    };
+    // Verify certificates after establishing connection.
+    https_server.verify = verify_paired_client;
+    https_server.on_verify_failed = reject_unpaired_client;
 
     https_server.default_resource["GET"] = not_found<SunshineHTTPS>;
     https_server.resource["^/serverinfo$"]["GET"] = serverinfo<SunshineHTTPS>;
@@ -1835,6 +1848,18 @@ namespace nvhttp {
 
 #ifdef SUNSHINE_TESTS
   namespace test_support {
+    std::shared_ptr<SimpleWeb::ServerBase<SunshineHTTPS>> make_office_cursor_server(const std::string &cert, const std::string &key) {
+      auto server = std::make_shared<https_server_t>(cert, key);
+      server->config.address = "127.0.0.1";
+      server->config.port = 0;
+      server->config.timeout_request = 5;
+      server->verify = verify_paired_client;
+      server->on_verify_failed = reject_unpaired_client;
+      server->resource["^/office/cursor$"]["GET"] = office_cursor;
+      server->default_resource["GET"] = not_found<SunshineHTTPS>;
+      return server;
+    }
+
     void pair_http(
       std::shared_ptr<typename SimpleWeb::ServerBase<SimpleWeb::HTTP>::Response> response,
       std::shared_ptr<typename SimpleWeb::ServerBase<SimpleWeb::HTTP>::Request> request
