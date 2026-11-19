@@ -67,6 +67,6 @@ cmake-build-<配置>/tests/test_sunshine --gtest_filter="OfficeDisplayScale*:Off
 
 Windows CI 入口为 `.github/workflows/office-windows.yml`，调用现有 Windows AMD64 完整构建和 GoogleTest；不会执行真实显示比例写入。公共编译清单包含 core 与 Windows 实现，`docs/Doxyfile` 纳入 `office/`，严格 Doxygen 文档检查覆盖新符号。
 
-本轮本地独立 mock 测试通过 14 项，启用 `-Wall -Wextra -Werror`；完整生产 TLS 新用例须等待 Windows CI。本轮没有连接远端运行此接口，没有部署、重启/注销，也没有实际更改任何显示器比例。
+本地独立 mock 测试通过14项，启用 `-Wall -Wextra -Werror`；完整Windows CI及新增生产TLS路由测试已通过，记录见[验证结果](VALIDATION.md)。另已用一次性隐藏只读探针在真实主机的控制台会话核对私有查询与有效DPI一致，任务和临时文件随后删除；该探针没有调用此HTTPS接口，也没有写入DPI、重启或注销。
 
 真实验收尚未完成：实体显示器/VDD 分别读取；150%/200%及恢复；显示器重排/断开时旧令牌拒绝；独立多屏只改捕获屏；克隆/自定义DPI/无console权限拒绝；低 DPI awareness、Windows版本和驱动兼容；应用文字图标实际变化及既有串流连续性。需在用户授权的合适时机执行，不能用 mock 或编译通过替代。
