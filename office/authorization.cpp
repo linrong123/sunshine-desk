@@ -5,7 +5,9 @@
 // standard includes
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,6 +54,34 @@ namespace office {
      * @param enabled Value to write.
      * @return `true` if the file was written.
      */
+    /**
+     * @brief Replace a file through a temporary sibling so an interrupted write never truncates it.
+     * @param path File to replace.
+     * @param content New file content.
+     * @return `false` if the temporary file could not be written or moved into place; the file is then unchanged.
+     */
+    bool replace_file(const std::filesystem::path &path, const std::string &content) {
+      auto temporary = path;
+      temporary += config_temporary_suffix;
+      std::error_code ignored;
+      {
+        std::ofstream out(temporary, std::ios::trunc);
+        out << content;
+        out.close();
+        if (!out) {
+          std::filesystem::remove(temporary, ignored);
+          return false;
+        }
+      }
+      std::error_code error;
+      std::filesystem::rename(temporary, path, error);
+      if (error) {
+        std::filesystem::remove(temporary, ignored);
+        return false;
+      }
+      return true;
+    }
+
     bool persist_confirm_connections(const bool enabled) {
       const auto &path = config::sunshine.config_file;
       auto vars = config::parse_config(file_handler::read_file(path.c_str()));
@@ -63,7 +93,7 @@ namespace office {
       for (const auto &[key, value] : sorted) {
         content += std::format("{} = {}\n", key, value);
       }
-      if (file_handler::write_file(path.c_str(), content) != 0) {
+      if (!replace_file(path, content)) {
         BOOST_LOG(warning) << "Failed to persist config option '"sv << confirm_connections_key << "'"sv;
         return false;
       }
@@ -124,6 +154,11 @@ namespace office {
       tree.put("root.<xmlattr>.status_message", "Expected exactly one action=start, action=status, or action=cancel parameter");
       return tree;
     }
+    if (client.cert.empty()) {
+      tree.put("root.<xmlattr>.status_code", 401);
+      tree.put("root.<xmlattr>.status_message", "The client is not paired or is disabled");
+      return tree;
+    }
 
     const auto &action = actions.front();
     auto state = connect_state_e::not_required;
@@ -157,11 +192,13 @@ namespace office {
       return false;
     }
     auto &tracker = connect_tracker();
-    if (tracker.admit(client.cert)) {
+    if (!client.cert.empty() && tracker.admit(client.cert)) {
       return false;
     }
 
-    tracker.start(client.cert, client.name, client.address);
+    if (!client.cert.empty()) {
+      tracker.start(client.cert, client.name, client.address);
+    }
     BOOST_LOG(info) << "Stream request from '"sv << client.name << "' at "sv << client.address << " requires host approval"sv;
     tree.put(std::string {result_field}, 0);
     tree.put("root.<xmlattr>.status_code", 403);

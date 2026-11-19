@@ -42,12 +42,11 @@ namespace office {
 
     for (const auto &prompt : current) {
       key_t key {kind, prompt.id};
-      if (!seen_.insert(key).second) {
+      // A request skipped because of the limit stays unseen so it can be shown once a slot frees.
+      if (seen_.contains(key) || open_count(kind) >= max_open) {
         continue;
       }
-      if (open_count(kind) >= max_open) {
-        continue;
-      }
+      seen_.insert(key);
       auto shown = prompt;
       shown.kind = kind;
       open_.emplace(std::move(key), shown);

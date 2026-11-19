@@ -92,7 +92,9 @@ namespace office {
      * @param name Paired device name shown to the host user.
      * @param address Source address shown to the host user.
      * @return `approved` while admitted, within a grace period, or for an unused permit, `pending` for a new or existing
-     *         request, or `none` with `limited` set when @ref max_pending requests are already waiting.
+     *         request, the retained `denied` or `expired` result for @ref result_retention after the last request
+     *         (a cooldown: no new request is created meanwhile), or `none` with `limited` set when
+     *         @ref max_pending requests are already waiting.
      */
     connect_start_t start(const std::string &cert, const std::string &name, const std::string &address);
 
@@ -104,9 +106,9 @@ namespace office {
     connect_state_e status(const std::string &cert);
 
     /**
-     * @brief Withdraw a client's request or unused permit.
+     * @brief Withdraw a client's pending request or unused permit.
      * @param cert Verified client certificate PEM.
-     * @return Always `none`.
+     * @return `none`, or the retained `denied` or `expired` result, which cancelling does not clear.
      */
     connect_state_e cancel(const std::string &cert);
 

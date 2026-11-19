@@ -105,6 +105,30 @@ namespace {
     EXPECT_EQ(tracker.status("b"), connect_state_e::none);
   }
 
+  TEST_F(ConnectConfirmTest, DeniedAndExpiredResultsActAsCooldown) {
+    tracker.start("a", "Phone", "192.0.2.10");
+    ASSERT_TRUE(tracker.resolve(only_pending_id(), false));
+    const auto denied = tracker.start("a", "Phone", "192.0.2.10");
+    EXPECT_EQ(denied.state, connect_state_e::denied);
+    EXPECT_FALSE(denied.limited);
+    EXPECT_TRUE(tracker.pending().empty());
+    EXPECT_EQ(tracker.cancel("a"), connect_state_e::denied);
+    EXPECT_EQ(tracker.start("a", "Phone", "192.0.2.10").state, connect_state_e::denied);
+    now += connect_confirm_t::result_retention - 1s;
+    EXPECT_EQ(tracker.start("a", "Phone", "192.0.2.10").state, connect_state_e::denied);
+    EXPECT_TRUE(tracker.pending().empty());
+    now += 1s;
+    EXPECT_EQ(tracker.start("a", "Phone", "192.0.2.10").state, connect_state_e::pending);
+    EXPECT_EQ(tracker.pending().size(), 1U);
+
+    now += connect_confirm_t::pending_lifetime;
+    EXPECT_EQ(tracker.start("a", "Phone", "192.0.2.10").state, connect_state_e::expired);
+    EXPECT_EQ(tracker.cancel("a"), connect_state_e::expired);
+    EXPECT_TRUE(tracker.pending().empty());
+    now += connect_confirm_t::result_retention;
+    EXPECT_EQ(tracker.start("a", "Phone", "192.0.2.10").state, connect_state_e::pending);
+  }
+
   TEST_F(ConnectConfirmTest, ExpiredRequestCannotBeResolved) {
     tracker.start("a", "Phone", "192.0.2.10");
     const auto id = only_pending_id();
@@ -418,7 +442,7 @@ namespace {
                                                }};  ///< Manager under test.
   };
 
-  TEST_F(PromptManagerTest, OpensAtMostThreeWindowsPerKindAndNeverReopens) {
+  TEST_F(PromptManagerTest, OpensAtMostThreeWindowsPerKindAndShowsWaitingRequestsLater) {
     manager.sync(office::prompt_kind_e::pairing, requests({"1", "2", "3", "4"}));
     ASSERT_EQ(backend.shown.size(), 3U);
     EXPECT_EQ(backend.shown[0].id, "1");
@@ -436,12 +460,27 @@ namespace {
     EXPECT_EQ(backend.closed[0].second, "1");
     EXPECT_EQ(backend.closed[0].first, office::prompt_kind_e::pairing);
     ASSERT_EQ(backend.shown.size(), 5U);
-    EXPECT_EQ(backend.shown[4].id, "5");
+    EXPECT_EQ(backend.shown[4].id, "4");
     EXPECT_EQ(manager.open_count(office::prompt_kind_e::pairing), 3U);
     EXPECT_EQ(manager.open_count(office::prompt_kind_e::connect), 1U);
 
     manager.sync(office::prompt_kind_e::pairing, requests({"2", "3", "4", "5"}));
     EXPECT_EQ(backend.shown.size(), 5U);
+  }
+
+  TEST_F(PromptManagerTest, OverLimitRequestIsShownAfterAnAnswerFreesASlot) {
+    manager.sync(office::prompt_kind_e::connect, {{office::prompt_kind_e::connect, "1", "A", "192.0.2.1"}, {office::prompt_kind_e::connect, "2", "B", "192.0.2.2"}, {office::prompt_kind_e::connect, "3", "C", "192.0.2.3"}, {office::prompt_kind_e::connect, "4", "D", "192.0.2.4"}});
+    ASSERT_EQ(backend.shown.size(), 3U);
+
+    // The answer is applied asynchronously, so request 1 is still pending on the next sync.
+    ASSERT_TRUE(manager.deny(office::prompt_kind_e::connect, "1"));
+    manager.sync(office::prompt_kind_e::connect, {{office::prompt_kind_e::connect, "1", "A", "192.0.2.1"}, {office::prompt_kind_e::connect, "2", "B", "192.0.2.2"}, {office::prompt_kind_e::connect, "3", "C", "192.0.2.3"}, {office::prompt_kind_e::connect, "4", "D", "192.0.2.4"}});
+    ASSERT_EQ(backend.shown.size(), 4U);
+    EXPECT_EQ(backend.shown[3].id, "4");
+    EXPECT_EQ(manager.open_count(office::prompt_kind_e::connect), 3U);
+
+    manager.sync(office::prompt_kind_e::connect, {{office::prompt_kind_e::connect, "2", "B", "192.0.2.2"}, {office::prompt_kind_e::connect, "3", "C", "192.0.2.3"}, {office::prompt_kind_e::connect, "4", "D", "192.0.2.4"}});
+    EXPECT_EQ(backend.shown.size(), 4U);
   }
 
   TEST_F(PromptManagerTest, PairingNeedsFourDigitPin) {
@@ -599,6 +638,21 @@ namespace {
     ASSERT_TRUE(office::set_confirm_connections(true, false));
     vars = config::parse_config(file_handler::read_file(config_file.string().c_str()));
     EXPECT_EQ(vars["desk_confirm_connections"], "disabled");
+    auto temporary = config_file;
+    temporary += office::config_temporary_suffix;
+    EXPECT_FALSE(std::filesystem::exists(temporary));
+  }
+
+  TEST_F(OfficeConfigTest, FailedPersistLeavesTheConfigFileUnchanged) {
+    const std::string original = "wan_encryption_mode = 1\ndesk_confirm_connections = disabled\n";
+    ASSERT_EQ(file_handler::write_file(config_file.string().c_str(), original), 0);
+    auto temporary = config_file;
+    temporary += office::config_temporary_suffix;
+    // A directory in place of the temporary file makes the write fail before the rename.
+    ASSERT_TRUE(std::filesystem::create_directory(temporary));
+    EXPECT_FALSE(office::set_confirm_connections(true, true));
+    EXPECT_EQ(file_handler::read_file(config_file.string().c_str()), original);
+    std::filesystem::remove(temporary);
   }
 }  // namespace
 

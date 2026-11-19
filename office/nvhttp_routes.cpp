@@ -60,8 +60,9 @@ namespace office {
      * @return Certificate, paired name, and source address.
      */
     client_identity_t request_identity(const https_request_t &request) {
-      auto [cert, name] = nvhttp::office_verified_client();
-      return {std::move(cert), std::move(name), net::addr_to_normalized_string(request->remote_endpoint().address())};
+      const auto peer = request->remote_endpoint();
+      auto [cert, name] = nvhttp::office_verified_client(peer);
+      return {std::move(cert), std::move(name), net::addr_to_normalized_string(peer.address())};
     }
   }  // namespace
 
@@ -140,7 +141,7 @@ namespace office {
     return reject_unapproved_stream(tree, result_field, request_identity(request));
   }
 
-  void quit_current_client() {
-    client_quit(nvhttp::office_verified_client().first);
+  void quit_current_client(const https_request_t &request) {
+    client_quit(nvhttp::office_verified_client(request->remote_endpoint()).first);
   }
 }  // namespace office

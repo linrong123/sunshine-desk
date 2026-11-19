@@ -25,13 +25,14 @@
 
 namespace nvhttp {
   /**
-   * @brief Client accepted by the most recent successful TLS client-certificate verification.
+   * @brief Client certificate presented on the verified TLS connection from @p peer.
    *
-   * Defined in `src/nvhttp.cpp`. Like the upstream launch-session identity, it reflects the latest
-   * handshake, so two clients completing handshakes at the same moment can race.
-   * @return Certificate PEM and paired device name; empty if no client was verified yet.
+   * Defined in `src/nvhttp.cpp`. Each verified connection is recorded by its client endpoint during
+   * the handshake, so concurrent handshakes of other paired clients cannot change the result.
+   * @param peer Client endpoint of the request's connection.
+   * @return Certificate PEM and paired device name; empty if the connection is unknown or the client is disabled.
    */
-  std::pair<std::string, std::string> office_verified_client();
+  std::pair<std::string, std::string> office_verified_client(const boost::asio::ip::tcp::endpoint &peer);
 }  // namespace nvhttp
 
 namespace office {
@@ -83,8 +84,9 @@ namespace office {
 
   /**
    * @brief Record an explicit quit (`/cancel`) by the calling client; ends its reconnect grace.
+   * @param request Verified `/cancel` request.
    */
-  void quit_current_client();
+  void quit_current_client(const https_request_t &request);
 }  // namespace office
 
 #ifdef SUNSHINE_TESTS

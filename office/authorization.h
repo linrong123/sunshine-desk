@@ -23,6 +23,7 @@
 
 namespace office {
   inline constexpr std::string_view confirm_connections_key = "desk_confirm_connections";  ///< Configuration key, `enabled` or `disabled`.
+  inline constexpr std::string_view config_temporary_suffix = ".office-tmp";  ///< Sibling written first, then renamed over the configuration file.
   inline constexpr int connect_timeout_seconds = 60;  ///< `timeoutSeconds` reported to clients; equals the pending lifetime.
 
   /**
@@ -79,7 +80,7 @@ namespace office {
   /**
    * @brief Handle `/office/connect-request` for an already verified client.
    * @param actions Every `action` query value of the request.
-   * @param client Verified client identity.
+   * @param client Verified client identity; an empty certificate (connection unknown or client disabled) gets `status_code=401`.
    * @return GameStream XML response tree.
    */
   boost::property_tree::ptree connect_request(const std::vector<std::string> &actions, const client_identity_t &client);
@@ -94,7 +95,7 @@ namespace office {
    *
    * @param tree Response tree populated on rejection.
    * @param result_field Field set to 0 on rejection, such as `root.gamesession` or `root.resume`.
-   * @param client Verified client identity.
+   * @param client Verified client identity; with approval required, an empty certificate is rejected without a request.
    * @return `true` if the request was rejected.
    */
   bool reject_unapproved_stream(boost::property_tree::ptree &tree, std::string_view result_field, const client_identity_t &client);

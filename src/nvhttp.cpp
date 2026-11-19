@@ -11,6 +11,8 @@
 #include <chrono>
 #include <filesystem>
 #include <format>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -64,6 +66,17 @@ namespace nvhttp {
   }
 
   /**
+   * @brief Office: remember which client certificate a verified TLS connection presented.
+   *
+   * Requests on that connection are later attributed to this certificate by their client endpoint,
+   * which is unique among open connections, instead of the most recent handshake (office/CONNECTION.md).
+   * @param ssl Connection whose handshake passed client verification.
+   * @param connection Owner of the connection; the record expires with it.
+   * @param peer Client endpoint of the connection.
+   */
+  void office_remember_connection(SSL *ssl, const std::shared_ptr<void> &connection, const boost::asio::ip::tcp::endpoint &peer);
+
+  /**
    * @brief HTTPS server backend that adds Sunshine's client-certificate verification.
    */
   class SunshineHTTPSServer: public SimpleWeb::ServerBase<SunshineHTTPS> {
@@ -115,6 +128,13 @@ namespace nvhttp {
         if (verify && !verify(session->connection->socket->native_handle())) {
           this->write(session, on_verify_failed);
         } else {
+          if (verify) {
+            SimpleWeb::error_code endpoint_error;
+            const auto peer = session->connection->socket->lowest_layer().remote_endpoint(endpoint_error);
+            if (!endpoint_error) {
+              office_remember_connection(session->connection->socket->native_handle(), session->connection, peer);
+            }
+          }
           this->read(session);
         }
       } else if (this->on_error) {
@@ -226,6 +246,16 @@ namespace nvhttp {
    * @brief Shared HTTPS request object received by GameStream handlers.
    */
   using req_https_t = std::shared_ptr<typename SimpleWeb::ServerBase<SunshineHTTPS>::Request>;
+
+  /**
+   * @brief Office: attribute a launch session to the certificate of the request's own TLS connection.
+   *
+   * Overrides the upstream "last verified handshake" identity so a concurrent handshake of another
+   * paired client cannot take over the session; keeps the upstream identity if the connection is unknown.
+   * @param launch_session Session created for this launch or resume request.
+   * @param request Verified launch or resume request.
+   */
+  void office_bind_launch_identity(rtsp_stream::launch_session_t &launch_session, const req_https_t &request);
   /**
    * @brief Shared HTTP response object passed to redirect and discovery handlers.
    */
@@ -1315,11 +1345,6 @@ namespace nvhttp {
     response->close_connection_after_response = true;
   }
 
-  std::pair<std::string, std::string> office_verified_client() {
-    std::lock_guard lock {client_auth_mutex()};
-    return {last_verified_client_cert, last_verified_client_name};
-  }
-
   nlohmann::json get_all_clients() {
     nlohmann::json named_cert_nodes = nlohmann::json::array();
     std::lock_guard lock {client_auth_mutex()};
@@ -1428,6 +1453,7 @@ namespace nvhttp {
 
     host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
     auto launch_session = make_launch_session(host_audio, args);
+    office_bind_launch_identity(*launch_session, request);
 
     if (rtsp_stream::session_count() == 0) {
       // The display should be restored in case something fails as there are no other sessions.
@@ -1547,6 +1573,7 @@ namespace nvhttp {
       host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
     }
     const auto launch_session = make_launch_session(host_audio, args);
+    office_bind_launch_identity(*launch_session, request);
 
     if (no_active_sessions) {
       // We want to prepare display only if there are no active sessions at
@@ -1615,7 +1642,7 @@ namespace nvhttp {
     tree.put("root.<xmlattr>.status_code", 200);
 
     rtsp_stream::terminate_sessions();
-    office::quit_current_client();
+    office::quit_current_client(request);
 
     if (proc::proc.running() > 0) {
       proc::proc.terminate();
@@ -1657,6 +1684,78 @@ namespace nvhttp {
              enabled device and "name" is the friendly client name set during pairing.
    */
   std::pair<bool, std::string> get_client_status(const std::string_view cert_pem);
+
+  /**
+   * @brief Office: client certificate bound to one verified TLS connection.
+   */
+  struct office_connection_t {
+    std::weak_ptr<void> connection;  ///< Connection owner; expired once the connection closes.
+    std::string cert;  ///< Certificate PEM presented in the connection's handshake.
+  };
+
+  /**
+   * @brief Office: verified connections by client endpoint.
+   * @return Mutable registry; callers hold @ref office_connections_mutex.
+   */
+  std::map<boost::asio::ip::tcp::endpoint, office_connection_t> &office_connections() {
+    static std::map<boost::asio::ip::tcp::endpoint, office_connection_t> connections;
+    return connections;
+  }
+
+  /**
+   * @brief Office: mutex guarding @ref office_connections.
+   * @return Registry mutex; never held together with `client_auth_mutex()`.
+   */
+  std::mutex &office_connections_mutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
+  void office_remember_connection(SSL *ssl, const std::shared_ptr<void> &connection, const boost::asio::ip::tcp::endpoint &peer) {
+    crypto::x509_t x509 {
+#if OPENSSL_VERSION_MAJOR >= 3
+      SSL_get1_peer_certificate(ssl)
+#else
+      SSL_get_peer_certificate(ssl)
+#endif
+    };
+    if (!x509) {
+      return;
+    }
+    auto cert = crypto::pem(x509);
+    std::lock_guard lock {office_connections_mutex()};
+    auto &connections = office_connections();
+    std::erase_if(connections, [](const auto &entry) {
+      return entry.second.connection.expired();
+    });
+    connections.insert_or_assign(peer, office_connection_t {connection, std::move(cert)});
+  }
+
+  std::pair<std::string, std::string> office_verified_client(const boost::asio::ip::tcp::endpoint &peer) {
+    std::string cert;
+    {
+      std::lock_guard lock {office_connections_mutex()};
+      const auto &connections = office_connections();
+      const auto it = connections.find(peer);
+      if (it == connections.end() || it->second.connection.expired()) {
+        return {};
+      }
+      cert = it->second.cert;
+    }
+    std::lock_guard lock {client_auth_mutex()};
+    auto [enabled, name] = get_client_status(cert);
+    if (!enabled) {
+      return {};
+    }
+    return {std::move(cert), std::move(name)};
+  }
+
+  void office_bind_launch_identity(rtsp_stream::launch_session_t &launch_session, const req_https_t &request) {
+    if (auto [cert, name] = office_verified_client(request->remote_endpoint()); !cert.empty()) {
+      launch_session.client_cert = std::move(cert);
+      launch_session.client_name = std::move(name);
+    }
+  }
 
   void start() {
     platf::set_thread_name("nvhttp");

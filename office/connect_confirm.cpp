@@ -70,12 +70,16 @@ namespace office {
     if (active_.contains(cert) || grace_.contains(cert)) {
       return {connect_state_e::approved};
     }
+    if (existing != requests_.end()) {
+      // A retained denied or expired result is a cooldown: no new prompt until it lapses.
+      return {existing->second.state};
+    }
 
     const auto waiting = std::ranges::count(requests_, connect_state_e::pending, [](const auto &entry) {
       return entry.second.state;
     });
     if (static_cast<std::size_t>(waiting) >= max_pending) {
-      return {existing != requests_.end() ? existing->second.state : connect_state_e::none, true};
+      return {connect_state_e::none, true};
     }
 
     requests_.insert_or_assign(cert, request_t {connect_state_e::pending, next_id_++, name, address, now + pending_lifetime});
@@ -93,8 +97,17 @@ namespace office {
 
   connect_state_e connect_confirm_t::cancel(const std::string &cert) {
     const std::scoped_lock lock {mutex_};
-    requests_.erase(cert);
-    return connect_state_e::none;
+    prune(now_());
+    const auto it = requests_.find(cert);
+    if (it == requests_.end()) {
+      return connect_state_e::none;
+    }
+    if (it->second.state == connect_state_e::pending || it->second.state == connect_state_e::approved) {
+      requests_.erase(it);
+      return connect_state_e::none;
+    }
+    // Cancelling must not clear the cooldown of a denied or expired result.
+    return it->second.state;
   }
 
   bool connect_confirm_t::resolve(const std::uint64_t id, const bool allow) {

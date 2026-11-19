@@ -73,8 +73,9 @@ namespace office {
    * @brief Decide which requests get a window and dispatch the host user's answers.
    *
    * At most @ref max_open windows exist per kind. A request that arrives while the limit is reached
-   * never gets a window; pairing requests remain available from the tray notification and the web
-   * PIN page. A window closes when its request disappears (completed, cancelled, or expired) or when
+   * waits and gets a window on a later sync once a slot frees; meanwhile pairing requests remain
+   * available from the tray notification and the web PIN page. An answered request is never shown
+   * again while it stays pending. A window closes when its request disappears (completed, cancelled, or expired) or when
    * it is answered. Not thread-safe: the owning UI thread makes every call.
    */
   class prompt_manager_t {
@@ -137,7 +138,7 @@ namespace office {
     prompt_backend_t &backend_;  ///< Window operations.
     prompt_actions_t actions_;  ///< Answer handlers.
     std::map<key_t, prompt_t> open_;  ///< Requests that currently have a window.
-    std::set<key_t> seen_;  ///< Pending requests already shown, answered, or skipped because of the limit.
+    std::set<key_t> seen_;  ///< Pending requests already shown (including answered ones); over-limit requests are not recorded.
   };
 
   /**

@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <type_traits>
@@ -460,6 +461,10 @@ protected:
    */
   void register_test_routes(SimpleWeb::ServerBase<nvhttp::SunshineHTTPS> &https_server) override {
     https_server.resource["^/launch$"]["GET"] = nvhttp::test_support::launch_for_test;
+    // Unlike office routes, this keeps the connection alive so a reused connection can be checked.
+    https_server.resource["^/office-test/whoami$"]["GET"] = [](auto response, auto request) {
+      response->write(nvhttp::office_verified_client(request->remote_endpoint()).second);
+    };
   }
 
   /**
@@ -484,6 +489,35 @@ TEST_F(OfficeConnectRequestTlsTest, MalformedActionsReturnBadRequest) {
   EXPECT_TRUE(office::connect_tracker().pending().empty());
 }
 
+TEST_F(OfficeConnectRequestTlsTest, IdentityFollowsTheConnectionNotTheLatestHandshake) {
+  const auto second_credentials = crypto::gen_creds("Office second test client", 2048);
+  write_credentials("second", second_credentials);
+  ASSERT_FALSE(nvhttp::test_support::add_client("second device", second_credentials.x509, true).empty());
+  const auto make_client = [this](const std::string &identity) {
+    auto client = std::make_unique<SimpleWeb::Client<SimpleWeb::HTTPS>>(
+      std::format("127.0.0.1:{}", port.load()),
+      false,
+      (directory / (identity + ".crt")).string(),
+      (directory / (identity + ".key")).string()
+    );
+    client->config.timeout = 5;
+    return client;
+  };
+  const auto first = make_client("paired");
+  const auto second = make_client("second");
+
+  EXPECT_EQ(first->request("GET", "/office-test/whoami")->content.string(), "office test");
+  // The second device completes a newer handshake while the first connection stays open.
+  EXPECT_EQ(second->request("GET", "/office-test/whoami")->content.string(), "second device");
+  EXPECT_EQ(first->request("GET", "/office-test/whoami")->content.string(), "office test");
+
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, false));
+  EXPECT_EQ(first->request("GET", "/office-test/whoami")->content.string(), "");
+  EXPECT_EQ(connect("action=start").get<int>("root.<xmlattr>.status_code"), 401);
+  EXPECT_TRUE(office::connect_tracker().pending().empty());
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, true));
+}
+
 TEST_F(OfficeConnectRequestTlsTest, StartStatusCancelUseTheVerifiedIdentity) {
   EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "none");
   const auto started = connect("action=start");
@@ -505,6 +539,9 @@ TEST_F(OfficeConnectRequestTlsTest, StartStatusCancelUseTheVerifiedIdentity) {
   connect("action=start");
   ASSERT_TRUE(office::connect_tracker().resolve(office::connect_tracker().pending().front().id, false));
   EXPECT_EQ(connect("action=status").get<std::string>("root.state"), "denied");
+  EXPECT_EQ(connect("action=start").get<std::string>("root.state"), "denied");
+  EXPECT_EQ(connect("action=cancel").get<std::string>("root.state"), "denied");
+  EXPECT_TRUE(office::connect_tracker().pending().empty());
 }
 
 TEST_F(OfficeConnectRequestTlsTest, ReportsNotRequiredWhenDisabled) {
