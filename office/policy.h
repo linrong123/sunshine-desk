@@ -4,11 +4,20 @@
  */
 #pragma once
 
+#include <atomic>
 #include <optional>
 #include <string_view>
 
 namespace office {
   constexpr std::string_view desktop_apps = R"({"env":{},"apps":[{"name":"Desktop","image-path":"desktop.png"}]})";  ///< Runtime desktop-only catalog; persisted user configuration is untouched.
+
+  /**
+   * @brief Whether application parsing and listing use `desktop_apps` instead of the configured file.
+   *
+   * The service entry point enables this before the first application refresh. It stays disabled in
+   * unit tests so upstream tests keep exercising the configured applications file unchanged.
+   */
+  inline std::atomic_bool desktop_catalog_only {false};
 
   /**
    * @brief Validate the explicit visibility parameter without changing cursor state.
