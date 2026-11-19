@@ -23,7 +23,7 @@
 | `src/config.cpp`、`docs/configuration.md`、Web `config_tabs.json` | `dd_configuration_option` 默认 `ensure_active` | 三处默认一致；不覆盖已配置的 disabled/manual |
 | `Navbar.vue`、`router.js` | 隐藏“应用”“精选”导航，两条路由重定向到首页 | 上游新增应用相关页面时同样隐藏 |
 | 三个平台 `assets/apps.json` | 新安装 Desktop-only | 上游 config.cpp 仍仅在用户文件不存在时复制模板 |
-| `src/globals.*`、`src/platform/common.h` 与各平台 capture 签名 | `display_cursor` 与 capture 的 `cursor` 参数为 `std::atomic_bool` | 上游新增 capture 实现（本次合并新增 macOS ScreenCaptureKit 路径）须同步改签名；见下文取舍 |
+| `src/globals.*`、`src/platform/common.h`、各平台 capture 签名及测试替身 | `display_cursor` 与 capture 的 `cursor` 参数为 `std::atomic_bool` | 上游新增的 capture 实现（本次合并新增 macOS ScreenCaptureKit 路径）和测试里的 `display_t` 替身（本次为 `tests/unit/platform/linux/test_display_geometry.cpp`、`tests/unit/platform/macos/test_display_helpers.mm`）须同步改签名，只改签名、不删测试；合并后 `grep -rn "capture(.*, bool \*" src tests` 应无结果；见下文取舍 |
 | `office/display_scale.*`、`office/windows/display_scale.cpp` | 捕获 source 的真实系统 DPI、严格参数、随机目标令牌、串行读写与读回 | Windows 非公开 -3/-4 布局和 effective DPI 核验必须同时有效；未知值拒绝，不能 clamp 或改其他显示器；保留 mock/TLS 测试 |
 | `cmake/compile_definitions/common.cmake` | 把 office 源码加入公共构建清单 | Windows 以外不宣告 DPI 能力、不调用 Windows API；新符号必须完整 Doxygen 文档化 |
 | `dockle.toml` | `[targets.doxygen] inputs` 逐个列入 office 源文件 | 上游已用 dockle 取代 `docs/Doxyfile`，严格模式（警告即失败）随 `BUILD_DOCS=ON` 在 Windows CI 运行；新增 office 源文件要同时加到这里，不整目录加入以免中文 Markdown 进入文档构建 |

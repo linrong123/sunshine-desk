@@ -24,7 +24,7 @@ namespace {
      * @brief Complete without capturing frames.
      * @return Successful capture status.
      */
-    platf::capture_e capture(const push_captured_image_cb_t &, const pull_free_image_cb_t &, bool *) override {
+    platf::capture_e capture(const push_captured_image_cb_t &, const pull_free_image_cb_t &, std::atomic_bool *) override {
       return platf::capture_e::ok;
     }
 
