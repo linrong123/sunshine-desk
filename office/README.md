@@ -64,7 +64,7 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 
 ## 文本剪贴板同步
 
-`GET /office/clipboard` 返回 `sequence`、`hasText` 和 base64 的 `text`；`POST /office/clipboard` 以原始 UTF-8 为 body 写入。只有当前正在串流的那台已配对设备可用，开关关闭时返回 403；超过 1 MiB 的请求体在读入前即以 HTTP 413 拒绝。仅 Windows 实现，尚未实机验收。协议、授权、换行规则与已知限制见 [CLIPBOARD.md](CLIPBOARD.md)。
+`GET /office/clipboard` 返回 `sequence`、`hasText` 和 base64 的 `text`；`POST /office/clipboard` 以原始 UTF-8 为 body 写入。只有当前正在串流的那台已配对设备可用，开关关闭时返回 403；超过 1 MiB 的请求体在读入前即被拒绝（服务端直接断开连接）。仅 Windows 实现，尚未实机验收。协议、授权、换行规则与已知限制见 [CLIPBOARD.md](CLIPBOARD.md)。
 
 ## 验证与交接
 
@@ -73,7 +73,7 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - 完整 GoogleTest 包含 `tests/unit/test_office.cpp` 的固定运行目录与 cursor 参数测试，以及 `test_office_display_scale.cpp` 的 DPI 边界、严格请求、目标令牌、失败与读回测试。`OfficeDisplayScaleTlsTest` 使用生产 TLS 服务和 synthetic DPI backend，验证已配对读取/POST 及未知、禁用、解除配对、缺证书和明文拒绝；测试不修改任何真实显示器比例。
 - `test_office_main_window.cpp` 覆盖主窗口纯逻辑（地址筛选与格式化、设备行、名称校验与重启规则、单键原子写回）；`test_system_tray.cpp` 断言 Windows 托盘左键回调。
 - `test_office_authorization.cpp` 覆盖确认状态机（假时钟）、协议处理、launch 闸门、弹窗规则（假窗口后端）、配置解析与写回、加密默认值；`OfficeConnectRequestTlsTest` 经生产 TLS 服务验证 connect-request 与无许可 launch 的 403。
-- `test_office_clipboard.cpp` 覆盖剪贴板换行转换、base64、UTF-8 校验、授权判定与请求处理（假 backend）；`OfficeClipboardTlsTest` 经生产 TLS 服务验证串流中读写、403、401 与超大请求体的 413，不触碰真实剪贴板。
+- `test_office_clipboard.cpp` 覆盖剪贴板换行转换、base64、UTF-8 校验、授权判定与请求处理（假 backend）；`OfficeClipboardTlsTest` 经生产 TLS 服务验证串流中读写、403、401 与超大请求体在读 body 前被断开，不触碰真实剪贴板。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
 - 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、配对弹窗与每次连接确认弹窗、托盘禁用/删除设备、原生主窗口（托盘左键、改名重启、服务模式会话）、剪贴板同步（服务模式下读写登录用户剪贴板、双端复制粘贴）、强制加密下的 Moonlight Desk 连接、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。

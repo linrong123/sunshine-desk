@@ -49,13 +49,13 @@ body 为原始 UTF-8 文本（不是 base64），无 query。成功时返回写�
 | 400 | 带了 query；GET 带 body；POST body 为空或不是合法 UTF-8 |
 | 401 | 证书未配对或客户端已禁用（GameStream 认证层统一返回）；没有证书可能在 TLS 握手就失败 |
 | 403 | 已配对但当前没有在串流、或被控端关闭了剪贴板同步；`status_message` 说明原因 |
-| 413 | POST body 超过 1 MiB |
+| 413 | POST body 超过 1 MiB（`Content-Length` 超限时不回响应、直接断开连接，见下） |
 | 501 | 非 Windows 平台 |
 | 503 | 剪贴板被其他程序占用（重试 5 次、间隔 30 ms 后仍打不开）或系统调用失败 |
 
-注意 413 有两种形态：
+注意超限有两种表现：
 
-- `Content-Length` 超过 1 MiB 时，Simple-Web-Server 在读取 body 之前直接回 **HTTP 413 Payload Too Large**，没有 XML body。这是为了不把超大 body 读进内存（HTTPS 服务的 `max_request_streambuf_size` 设为 1 MiB）。客户端应先检查 HTTP 状态行，再解析 XML。
+- `Content-Length` 超过 1 MiB 时，服务端在读取 body 之前**直接关闭连接，不回任何 HTTP 响应**（客户端看到 EOF 或连接被重置）。这是为了不把超大 body 读进内存（HTTPS 服务的 `max_request_streambuf_size` 设为 1 MiB）。Simple-Web-Server 在这条路径上虽然构造了 413 响应，但该响应对象没有挂发送逻辑（只有路由处理器的响应在析构时发送，见 `third-party/Simple-Web-Server/server_http.hpp` 的 `read()` 与 `write()`），所以实际从不发出。客户端应把「连接被关闭」和裸 HTTP 413（将来上游修复后可能出现）都当作终态、不重试；先检查 HTTP 状态行，再解析 XML。
 - 其余超限情况（理论上不会出现，作为兜底）返回 XML `status_code=413`。
 
 客户端应在发送前自己检查长度，不依赖服务端的 413。正好 1 MiB 允许。请求头也受同一上限约束（上游请求头远小于此）。
@@ -112,5 +112,5 @@ body 为原始 UTF-8 文本（不是 base64），无 query。成功时返回写�
 ## 测试
 
 - `tests/unit/test_office_clipboard.cpp`：换行转换、RFC 4648 base64 向量、严格 UTF-8、授权判定（无证书、别的设备、未串流、开关关闭）、请求处理（假 backend：tooLarge 边界、CRLF 转换、400/413/503、query 拒绝）、配置解析与持久化。
-- `tests/unit/test_nvhttp_client_auth.cpp` 的 `OfficeClipboardTlsTest`：经生产 TLS 服务器与假 backend 验证串流中的设备读写、未串流和开关关闭的 403、未知/禁用证书的 401、超大 `Content-Length` 在读 body 前得到 HTTP 413。
+- `tests/unit/test_nvhttp_client_auth.cpp` 的 `OfficeClipboardTlsTest`：经生产 TLS 服务器与假 backend 验证串流中的设备读写、未串流和开关关闭的 403、未知/禁用证书的 401、超大 `Content-Length` 只发请求头即被断开（不等 body，也不写剪贴板）。
 - 测试不触碰真实系统剪贴板。真实剪贴板读写的验收项见 [VALIDATION.md](VALIDATION.md)。

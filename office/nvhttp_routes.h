@@ -50,7 +50,7 @@ namespace office {
    * @brief Register every Office endpoint on the GameStream HTTPS server.
    *
    * Also caps each request (headers and body) at @ref clipboard_max_bytes; a larger
-   * `Content-Length` is answered with a bare HTTP 413 before the body is read.
+   * `Content-Length` closes the connection without an HTTP response before the body is read.
    * @param server HTTPS server whose TLS verification admits only enabled paired clients.
    */
   void register_https_routes(https_server_t &server);

@@ -10,17 +10,20 @@
 
 // standard includes
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <thread>
 #include <type_traits>
 #include <vector>
 
 // lib includes
+#include <boost/asio/ssl.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <Simple-Web-Server/client_http.hpp>
 #include <Simple-Web-Server/client_https.hpp>
@@ -710,18 +713,37 @@ TEST_F(OfficeClipboardTlsTest, RequiresStreamSwitchAndKnownCertificate) {
   EXPECT_EQ(fake->writes, 0);
 }
 
-/** @brief Verify an oversized body is refused from its Content-Length before it is read. */
+/**
+ * @brief Verify an oversized body is refused from its Content-Length before it is read.
+ * @details Only the request header is sent, so a server that waited for the body would never
+ * answer. Simple-Web-Server discards the 413 it prepares on this path and closes the connection
+ * without an HTTP response (office/CLIPBOARD.md); a 413 status line is accepted as well.
+ */
 TEST_F(OfficeClipboardTlsTest, OversizedBodyIsRefusedBeforeReading) {
+  namespace asio = boost::asio;
   start_stream();
-  SimpleWeb::Client<SimpleWeb::HTTPS> client {
-    std::format("127.0.0.1:{}", port.load()),
-    false,
-    (directory / "paired.crt").string(),
-    (directory / "paired.key").string()
-  };
-  client.config.timeout = 5;
-  const SimpleWeb::CaseInsensitiveMultimap header {{"Content-Length", std::to_string(2 * office::clipboard_max_bytes)}};
-  const auto response = client.request("POST", "/office/clipboard", "x", header);
-  EXPECT_TRUE(response->status_code.starts_with("413")) << response->status_code;
+  asio::io_context io;
+  asio::ssl::context context {asio::ssl::context::tls_client};
+  context.set_verify_mode(asio::ssl::verify_none);
+  context.use_certificate_chain_file((directory / "paired.crt").string());
+  context.use_private_key_file((directory / "paired.key").string(), asio::ssl::context::pem);
+  asio::ssl::stream<asio::ip::tcp::socket> stream {io, context};
+  const asio::ip::tcp::endpoint endpoint {asio::ip::make_address("127.0.0.1"), port.load()};
+  stream.lowest_layer().connect(endpoint);
+  stream.handshake(asio::ssl::stream_base::client);
+  const auto header = std::format(
+    "POST /office/clipboard HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n",
+    2 * office::clipboard_max_bytes
+  );
+  asio::write(stream, asio::buffer(header));
+
+  std::string received;
+  std::optional<boost::system::error_code> finished;
+  asio::async_read_until(stream, asio::dynamic_buffer(received), "\r\n", [&finished](const boost::system::error_code &ec, std::size_t) {
+    finished = ec;
+  });
+  io.run_for(std::chrono::seconds {5});
+  ASSERT_TRUE(finished.has_value()) << "the server waited for the body instead of refusing the header";
+  EXPECT_TRUE(received.empty() || received.starts_with("HTTP/1.1 413")) << received.substr(0, 64);
   EXPECT_EQ(fake->writes, 0);
 }

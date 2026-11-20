@@ -81,7 +81,8 @@ namespace office {
   void register_https_routes(https_server_t &server) {
     // No GameStream request carries a large body; the largest is a clipboard POST. Without a cap,
     // Simple-Web-Server buffers the whole Content-Length before routing. With it, a larger body is
-    // answered with a bare HTTP 413 before it is read.
+    // refused before it is read: the connection is closed without an HTTP response, because
+    // Simple-Web-Server drops the 413 it prepares on that path (office/CLIPBOARD.md).
     server.config.max_request_streambuf_size = clipboard_max_bytes;
     for (const auto &route : https_routes) {
       server.resource[std::string {route.pattern}][std::string {route.method}] = route.handler;

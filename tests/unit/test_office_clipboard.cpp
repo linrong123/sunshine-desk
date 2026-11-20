@@ -301,7 +301,9 @@ protected:
   void SetUp() override {
     original_config_file = config::sunshine.config_file;
     original_sync = office::clipboard_sync.load();
+    original_apps_file = config::stream.file_apps;
     config_file = std::filesystem::temp_directory_path() / "sunshine_test_office_clipboard.conf";  // NOSONAR(cpp:S5443): safe for tests
+    apps_file = config_file.parent_path() / "sunshine_test_office_clipboard_apps.json";
     std::filesystem::remove(config_file);
     config::sunshine.config_file = config_file.string();
   }
@@ -311,14 +313,18 @@ protected:
    */
   void TearDown() override {
     std::filesystem::remove(config_file);
+    std::filesystem::remove(apps_file);
     config::sunshine.config_file = original_config_file;
+    config::stream.file_apps = original_apps_file;
     office::clipboard_sync.store(original_sync);
   }
 
   std::filesystem::path config_file;  ///< Temporary configuration file.
+  std::filesystem::path apps_file;  ///< Temporary applications file.
 
 private:
   std::string original_config_file;  ///< Restored configuration path.
+  std::string original_apps_file;  ///< Restored applications path.
   bool original_sync {true};  ///< Restored switch.
 };
 
@@ -337,6 +343,8 @@ TEST_F(OfficeClipboardConfigTest, SwitchParsesDefaultsOnAndIsConsumed) {
   office::apply_clipboard_config(missing);
   EXPECT_TRUE(office::clipboard_sync.load());
 
+  ASSERT_EQ(file_handler::write_file(apps_file.string().c_str(), "{}"), 0);
+  config::stream.file_apps = apps_file.string();
   config::apply_config_for_test("desk_clipboard_sync = disabled\n");
   EXPECT_FALSE(office::clipboard_sync.load());
   config::apply_config_for_test("");
