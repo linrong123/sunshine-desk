@@ -10,6 +10,9 @@
 
 // standard includes
 #include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,7 +26,7 @@
 
 namespace office {
   inline constexpr std::string_view confirm_connections_key = "desk_confirm_connections";  ///< Configuration key, `enabled` or `disabled`.
-  inline constexpr std::string_view config_temporary_suffix = ".office-tmp";  ///< Sibling written first, then renamed over the configuration file.
+  inline constexpr std::string_view config_temporary_suffix = ".office-tmp";  ///< Start of the temporary sibling written first, then renamed over the configuration file.
   inline constexpr int connect_timeout_seconds = 60;  ///< `timeoutSeconds` reported to clients; equals the pending lifetime.
 
   /**
@@ -78,6 +81,50 @@ namespace office {
   bool set_confirm_connections(bool enabled, bool persist);
 
   /**
+   * @brief Set or remove one key in the configuration file, keeping every other key.
+   *
+   * The file is rewritten through a temporary sibling and a rename, so an interrupted write never
+   * truncates it. Keys are written sorted as `key = value`; comments are not preserved. Only the file
+   * changes; the running configuration is not reloaded. The whole read-modify-write holds a
+   * process-wide lock shared with @ref read_config_value and @ref set_confirm_connections, so
+   * concurrent writers from the tray and the main window never lose each other's updates. The web
+   * UI's `saveConfig` does not take this lock.
+   *
+   * @param key Configuration key.
+   * @param value New value, or `std::nullopt` to remove the key and fall back to the built-in default.
+   * @return `true` if the file was written.
+   */
+  bool persist_config_value(std::string_view key, const std::optional<std::string> &value);
+
+  /**
+   * @brief Read one key from the configuration file.
+   * @param key Configuration key.
+   * @return The value in the file, or `std::nullopt` if the key is absent.
+   */
+  std::optional<std::string> read_config_value(std::string_view key);
+
+  /**
+   * @brief Temporary sibling used by one configuration write.
+   *
+   * The name is unique per process (a random token chosen at startup) and per write (@p sequence),
+   * so neither a concurrent write nor another process reuses it.
+   *
+   * @param config_file Configuration file.
+   * @param sequence Write sequence number.
+   * @return `<config_file>.office-tmp.<token>-<sequence>`.
+   */
+  std::filesystem::path config_temporary_path(const std::filesystem::path &config_file, std::uint64_t sequence);
+
+  /**
+   * @brief Sequence number the next configuration write will use, without consuming it.
+   *
+   * Lets tests predict the temporary file of the next write.
+   *
+   * @return Next value passed to @ref config_temporary_path.
+   */
+  std::uint64_t next_config_temporary_sequence();
+
+  /**
    * @brief Handle `/office/connect-request` for an already verified client.
    * @param actions Every `action` query value of the request.
    * @param client Verified client identity; an empty certificate (connection unknown or client disabled) gets `status_code=401`.
@@ -123,6 +170,13 @@ namespace office {
    * @param cert Verified client certificate PEM.
    */
   void client_quit(const std::string &cert);
+
+  /**
+   * @brief Certificates of the clients with a running stream, as reported by the stream hooks.
+   * @return One entry per client with at least one running stream, sorted; an empty string stands for
+   *         streams of unpaired test sessions.
+   */
+  std::vector<std::string> streaming_certs();
 
   /**
    * @brief Enable or disable a paired client from the host.

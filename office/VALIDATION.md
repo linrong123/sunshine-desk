@@ -93,3 +93,20 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - 托盘「已授权设备」禁用/启用/删除（含确认框）与断流；「每次连接需本机确认」开关写回配置。
 - 开启确认后 Moonlight Desk 发起请求、被控端允许/拒绝/超时、断线 120 秒内免确认恢复、退出应用后需重新确认；官方 Moonlight 收到 403 后在本机允许并重试。
 - 锁屏或服务模式下弹窗所在会话；加密默认 2 对旧客户端的拒绝提示。
+
+## 原生主窗口（2026-11-19）
+
+分支 `feat/desk-ui`：托盘左键打开原生「Sunshine Desk」主窗口（本机地址、设备名称、已授权设备、确认开关、服务状态、高级设置入口、应用并重启服务）；点击配对通知打开主窗口。设计与限制见[原生主窗口](MAIN_WINDOW.md)。
+
+- 首次使用核实结论：上游启动时不自动打开浏览器（上游提交 `a84735d1`，#5329；`src/config.cpp` 快捷方式启动路径只确保服务运行；`src/httpcommon.cpp` 无凭据时只写日志；`src/confighttp.cpp` 仅在访问网页时重定向 `/welcome`），因此只改了配对通知的去向。
+- 新增 `tests/unit/test_office_main_window.cpp`（纯逻辑与单键原子写回）和 `SystemTrayTest.LeftClickOpensSunshineDeskMainWindow`。[成功 CI：44661927945](https://github.com/linrong123/sunshine-desk/actions/runs/44661927945)，来源提交 `e5088b1348`：GoogleTest 1012 项，1000 通过，12 跳过（编码器、外部命令与 Flatpak 安装、工作流托盘初始化、未授权 VirtualHID，与此前相同），0 失败；新增 `OfficeMainWindowTest` 10 项、`OfficeMainWindowConfigTest` 1 项与 `LeftClickOpensSunshineDeskMainWindow` 共 12 项均通过。
+- 复核修正（提交 `83f9a265`、`bc967247`、`493dd175`）：配置读改写加进程级锁并改用唯一临时文件名；串流先计数再置 RUNNING；主窗口读配置与枚举网卡移到工作线程；未设置 `sunshine_name` 时名称框为空、只写回用户修改。[成功 CI：44667287726](https://github.com/linrong123/sunshine-desk/actions/runs/44667287726)，来源提交 `493dd175`：GoogleTest 1015 项，1003 通过，12 跳过（与此前相同），0 失败；新增 `OfficeConfigTest.ConcurrentWritesKeepEveryUpdate`、`OfficeConfigTest.TemporaryFileNamesAreUniquePerWrite`、`OfficeMainWindowConfigTest.AcceptedNamesSurviveWriteAndReadBack` 均通过。
+- 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译，非 Windows 空实现只做了代码审阅。
+
+待实机验收（不能由 CI 推出）：
+
+- 托盘左键打开主窗口、再次左键把已有窗口带到前台（含最小化后）、右键菜单仍正常；窗口在 100%/150% 系统缩放下布局不截断。
+- 本机地址：多网卡、断开网卡、VPN/Hyper-V 虚拟网卡、IPv6（含临时地址，预期会显示）下的列表与「复制地址」；非默认端口时的方括号格式。
+- 设备名称：保存、确认重启后 Moonlight Desk 看到新名称；在确认框点「否」不重启；留空回落计算机名；非法字符提示。服务模式与 ZIP 控制台模式下重启都能恢复服务。
+- 已授权设备禁用/启用/删除（含确认框）与断流；与托盘子菜单、确认开关两处状态同步；串流中设备的状态行。
+- 点击托盘配对通知打开主窗口并同时出现配对弹窗；服务模式和锁屏时窗口所在会话。

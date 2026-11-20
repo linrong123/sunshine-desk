@@ -2374,9 +2374,10 @@ namespace stream {
       session.audioThread = std::jthread {audioThread, &session};
       session.videoThread = std::jthread {videoThread, &session};
 
-      session.state.store(state_e::RUNNING, std::memory_order_relaxed);
       // Office: an admitted client stays admitted while its stream runs (office/CONNECTION.md).
+      // Counted before RUNNING is published (release) so a racing stop() always sees it.
       office::stream_started(session.client_cert);
+      session.state.store(state_e::RUNNING, std::memory_order_release);
 
       // If this is the first session, invoke the platform callbacks
       if (++running_sessions == 1) {

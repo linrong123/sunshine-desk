@@ -29,7 +29,7 @@
 ### 开关
 
 - 配置键 `desk_confirm_connections`，取值 `enabled`/`disabled`（也接受 true/false、on/off、yes/no、1/0），默认 `disabled`；非法值记警告并按关闭处理。说明见 `docs/configuration.md`。
-- 托盘勾选项「每次连接需本机确认」即时生效并写回配置文件。写回会重新生成文件：保留所有键值，但注释丢失、键按字母排序。写入先落到同目录的 `<配置文件>.office-tmp`，再改名覆盖原文件；写入或改名失败时原文件不变，托盘开关仍按新值生效到下次启动。
+- 托盘勾选项「每次连接需本机确认」即时生效并写回配置文件。写回会重新生成文件：保留所有键值，但注释丢失、键按字母排序。写入先落到同目录的唯一临时文件 `<配置文件>.office-tmp.<令牌>-<序号>`，再改名覆盖原文件，整个读改写持有进程级配置锁（见 [MAIN_WINDOW.md](MAIN_WINDOW.md)「配置写回」）；写入或改名失败时原文件不变，托盘开关仍按新值生效到下次启动。
 - 上游网页「保存配置」会原样保留 `desk_confirm_connections`：`/api/config` 返回文件中的全部键（`src/confighttp.cpp` `getConfig`），页面只删除等于各标签页默认值的已知选项（`Config.vue` `save()`），`saveConfig` 写回请求中的全部非空键。
 - 生效条件：开关打开 **且** 弹窗线程在运行（`prompt_available`）。非 Windows 或弹窗线程启动失败时不生效（fail-open），serverinfo 报 `OfficeConnectConfirm=0`，`connect-request` 返回 `not_required`，避免无人能批准导致主机永久不可连。
 - 关闭开关时清空所有请求、许可和宽限。
@@ -69,7 +69,7 @@
 
 ## 托盘授权管理（Windows）
 
-- 「已授权设备」子菜单列出最多 16 个已配对设备（名称 + 状态），超出时显示提示，其余在网页管理。弹窗线程每 500 ms 比对设备列表和开关状态，有变化才重建菜单。
+- 「已授权设备」子菜单列出最多 16 个已配对设备（名称 + 状态），超出时提示「更多设备请在主窗口管理」。托盘左键打开的[原生主窗口](MAIN_WINDOW.md)列出全部设备，操作与托盘共用同一组函数（`office::request_client_access` / `request_delete_client` / `request_confirm_connections`），确认开关两处状态同步。弹窗线程每 500 ms 比对设备列表和开关状态，有变化才重建菜单。
 - 每项可「禁用/启用」和「删除授权」（删除前弹确认框）。复用上游 `nvhttp::set_client_enabled` / `nvhttp::unpair_client`；禁用和删除都会结束该证书的串流，若已无其他串流则结束 Desktop 应用，并撤销该证书的许可与宽限。
 - 菜单回调把会阻塞的操作（改配对文件、确认框）放到短命工作线程，不占用托盘线程。
 

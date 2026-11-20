@@ -40,6 +40,9 @@
   #include <src/config.h>
   #include <src/system_tray.h>
   #include <src/thread_safe.h>
+  #ifdef _WIN32
+    #include <office/tray_devices.h>
+  #endif
 
 namespace {
   using namespace std::chrono_literals;
@@ -361,6 +364,14 @@ TEST_F(SystemTrayTest, LeftClickUsesNativeMacOSMenu) {
   #endif
 
   #ifdef _WIN32
+TEST_F(SystemTrayTest, LeftClickOpensSunshineDeskMainWindow) {
+  const auto &tray_data = system_tray::tray_data_for_testing();
+  // Not invoked here: without a prompt thread it would fall back to opening the browser.
+  EXPECT_EQ(tray_data.cb, &office::tray_open_main_window_cb);
+  ASSERT_NE(tray_data.menu, nullptr);
+  EXPECT_NE(tray_data.menu[0].text, nullptr);
+}
+
 TEST_F(SystemTrayTest, ResolvesDevelopmentTrayIconsFromExecutableDirectory) {
   EXPECT_EQ(system_tray::resource_path_for_testing(nullptr), nullptr);
   EXPECT_EQ(system_tray::resource_path_for_testing(""), nullptr);

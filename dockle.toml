@@ -53,6 +53,10 @@ inputs = [
   "office/authorization_ui.cpp",
   "office/tray_devices.h",
   "office/windows/authorization_ui.cpp",
+  "office/main_window.h",
+  "office/main_window.cpp",
+  "office/windows/main_window.h",
+  "office/windows/main_window.cpp",
 ]
 image_paths = ["docs/images"]
 predefined = [
