@@ -139,7 +139,7 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 分支 `feat/adaptive-fec`：按会话根据客户端 `SS_FRAME_FEC_STATUS`（`0x5502`）反馈调整视频 FEC 百分比，配置键 `desk_adaptive_fec`（默认开）与 `desk_adaptive_fec_max`（默认 60）。设计见[自适应视频 FEC](ADAPTIVE_FEC.md)。
 
 - 新增 `tests/unit/test_office_adaptive_fec.cpp`（解析、估计无偏性、控制器、会话与配置）。
-- CI：待记录。
+- CI：run 44770799683（提交 c5c34d42）通过：office-policy 成功；Windows-AMD64 构建（`-DBUILD_WERROR=ON`）打包成功，GoogleTest 1048 个用例中 1036 个通过、12 个跳过、无失败，`OfficeAdaptiveFecTest` 16 个用例全部通过。
 - 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译。
 
 待实机验收（不能由 CI 推出）：
