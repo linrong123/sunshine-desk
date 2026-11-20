@@ -140,7 +140,7 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 
 - 新增 `tests/unit/test_office_adaptive_fec.cpp`（解析、估计无偏性、控制器、超大帧退回、会话与配置）。
 - CI：run 44770799683（提交 c5c34d42）通过：office-policy 成功；Windows-AMD64 构建（`-DBUILD_WERROR=ON`）打包成功，GoogleTest 1048 个用例中 1036 个通过、12 个跳过、无失败，`OfficeAdaptiveFecTest` 16 个用例全部通过。
-- 复核修正（超大帧先退回 `fec_percentage` 再关 FEC、上限不大于下限时记 info、估计偏差说明）：CI 结果见下一条。
+- 复核修正（超大帧先退回 `fec_percentage` 再关 FEC、上限不大于下限时记 info、估计偏差说明，提交 84ea55dd）：CI run 44776341389 通过，office-policy 成功，Windows-AMD64 构建（`-DBUILD_WERROR=ON`）打包成功，GoogleTest 1049 个用例中 1037 个通过、12 个跳过、无失败，`OfficeAdaptiveFecTest` 17 个用例全部通过。
 - 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译。
 
 待实机验收（不能由 CI 推出）：
