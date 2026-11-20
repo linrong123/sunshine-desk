@@ -27,6 +27,7 @@
 #include "input.h"
 #include "logging.h"
 #include "network.h"
+#include "office/adaptive_fec.h"
 #include "office/authorization.h"
 #include "platform/common.h"
 #include "process.h"
@@ -509,6 +510,8 @@ namespace stream {
     std::jthread videoThread;  ///< Video thread.
 
     std::chrono::steady_clock::time_point pingTimeout;  ///< Deadline for receiving the next client ping.
+
+    office::adaptive_fec_session_t adaptive_fec;  ///< Office: per-session adaptive video FEC (office/ADAPTIVE_FEC.md).
 
     safe::shared_t<broadcast_ctx_t>::ptr_t broadcast_ref;  ///< Shared broadcast context retained while the session is active.
 
@@ -1203,6 +1206,11 @@ namespace stream {
       BOOST_LOG(debug) << "type [IDX_START_B]"sv;
     });
 
+    // Office: per-block FEC feedback drives the adaptive FEC percentage (office/ADAPTIVE_FEC.md).
+    server->map(office::frame_fec_status_type, [](session_t *session, const std::string_view &payload) {
+      office::adaptive_fec_feedback(session->adaptive_fec, payload);
+    });
+
     server->map(packetTypes[IDX_LOSS_STATS], [&](session_t *session, const std::string_view &payload) {
       auto stats = (int32_t *) payload.data();
       auto count = stats[0];
@@ -1396,6 +1404,8 @@ namespace stream {
 
               send_hdr_mode(session, std::move(hdr_info));
             }
+
+            office::adaptive_fec_tick(session->adaptive_fec, now, session->launch_session_id);
           }
 
           ++pos;
@@ -1683,7 +1693,7 @@ namespace stream {
         frame_header.frame_processing_latency = 0;
       }
 
-      auto fecPercentage = config::stream.fec_percentage;
+      auto fecPercentage = office::adaptive_fec_percentage(session->adaptive_fec, config::stream.fec_percentage);
 
       // Insert space for packet headers
       auto blocksize = session->config.packetsize + MAX_RTP_HEADER_SIZE;
@@ -2346,6 +2356,9 @@ namespace stream {
      * @brief Start the audio, video, and control workers for a streaming session.
      */
     int start(session_t &session, const std::string &addr_string) {
+      // Office: reset adaptive FEC before the control and video threads can see the session.
+      office::adaptive_fec_start(session.adaptive_fec, config::stream.fec_percentage, session.launch_session_id);
+
       session.input = input::alloc(session.mail, session.input_session_id);
 
       session.broadcast_ref = broadcast.ref();

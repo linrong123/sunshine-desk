@@ -60,6 +60,8 @@ inputs = [
   "office/clipboard.h",
   "office/clipboard.cpp",
   "office/windows/clipboard.cpp",
+  "office/adaptive_fec.h",
+  "office/adaptive_fec.cpp",
 ]
 image_paths = ["docs/images"]
 predefined = [

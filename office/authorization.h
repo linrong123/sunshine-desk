@@ -71,7 +71,7 @@ namespace office {
   std::optional<bool> parse_config_switch(std::string_view value);
 
   /**
-   * @brief Parse and consume Office keys (authorization and clipboard) from a configuration map.
+   * @brief Parse and consume Office keys (authorization, clipboard, and adaptive FEC) from a configuration map.
    * @param vars Parsed configuration entries; consumed keys are erased.
    */
   void apply_config(config::config_map_t &vars);

@@ -151,6 +151,8 @@ set(SUNSHINE_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/office/clipboard.h"
         "${CMAKE_SOURCE_DIR}/office/clipboard.cpp"
         "${CMAKE_SOURCE_DIR}/office/windows/clipboard.cpp"
+        "${CMAKE_SOURCE_DIR}/office/adaptive_fec.h"
+        "${CMAKE_SOURCE_DIR}/office/adaptive_fec.cpp"
         "${CMAKE_SOURCE_DIR}/third-party/moonlight-common-c/src/Input.h"
         "${CMAKE_SOURCE_DIR}/third-party/moonlight-common-c/src/Rtsp.h"
         "${CMAKE_SOURCE_DIR}/third-party/moonlight-common-c/src/RtspParser.c"
