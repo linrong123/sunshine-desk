@@ -99,7 +99,7 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 分支 `feat/desk-ui`：托盘左键打开原生「Sunshine Desk」主窗口（本机地址、设备名称、已授权设备、确认开关、服务状态、高级设置入口、应用并重启服务）；点击配对通知打开主窗口。设计与限制见[原生主窗口](MAIN_WINDOW.md)。
 
 - 首次使用核实结论：上游启动时不自动打开浏览器（上游提交 `a84735d1`，#5329；`src/config.cpp` 快捷方式启动路径只确保服务运行；`src/httpcommon.cpp` 无凭据时只写日志；`src/confighttp.cpp` 仅在访问网页时重定向 `/welcome`），因此只改了配对通知的去向。
-- 新增 `tests/unit/test_office_main_window.cpp`（纯逻辑与单键原子写回）和 `SystemTrayTest.LeftClickOpensSunshineDeskMainWindow`。CI 结果见下方补记。
+- 新增 `tests/unit/test_office_main_window.cpp`（纯逻辑与单键原子写回）和 `SystemTrayTest.LeftClickOpensSunshineDeskMainWindow`。[成功 CI：44661927945](https://github.com/linrong123/sunshine-desk/actions/runs/44661927945)，来源提交 `e5088b1348`：GoogleTest 1012 项，1000 通过，12 跳过（编码器、外部命令与 Flatpak 安装、工作流托盘初始化、未授权 VirtualHID，与此前相同），0 失败；新增 `OfficeMainWindowTest` 10 项、`OfficeMainWindowConfigTest` 1 项与 `LeftClickOpensSunshineDeskMainWindow` 共 12 项均通过。
 - 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译，非 Windows 空实现只做了代码审阅。
 
 待实机验收（不能由 CI 推出）：
