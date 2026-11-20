@@ -1705,11 +1705,14 @@ namespace stream {
       // There are 2 bits for FEC block count for a maximum of 4 FEC blocks
       constexpr auto MAX_FEC_BLOCKS = 4;
 
-      auto max_data_shards_per_fec_block = fec::max_data_shards(fecPercentage);
-
-      // Compute the number of FEC blocks needed for this frame using the block size and max shards
-      auto max_data_per_fec_block = max_data_shards_per_fec_block * blocksize;
-      auto fec_blocks_needed = (payload.size() + (max_data_per_fec_block - 1)) / max_data_per_fec_block;
+      // Compute the number of FEC blocks needed for this frame using the block size and max shards.
+      // office: an adaptive percentage that does not fit falls back to the configured fec_percentage.
+      const auto fec_fit = office::fit_fec_blocks(payload.size(), blocksize, fecPercentage, config::stream.fec_percentage, MAX_FEC_BLOCKS, fec::max_data_shards);
+      if (fec_fit.percentage != fecPercentage) {
+        BOOST_LOG(debug) << "Adaptive FEC: large frame does not fit "sv << MAX_FEC_BLOCKS << " FEC blocks at "sv << fecPercentage << "%; using "sv << fec_fit.percentage << '%';
+        fecPercentage = fec_fit.percentage;
+      }
+      auto fec_blocks_needed = fec_fit.blocks;
 
       // If the number of FEC blocks needed exceeds the protocol limit, turn off FEC for this frame.
       // For normal FEC percentages, this should only happen for enormous frames (over 800 packets at 20%).

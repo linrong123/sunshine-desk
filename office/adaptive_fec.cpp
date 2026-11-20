@@ -233,7 +233,12 @@ namespace office {
 
     const auto ceiling = adaptive_fec_max.load();
     // FEC explicitly turned off (0%) is respected; a ceiling at or below the floor leaves nothing to adapt.
-    if (!adaptive_fec_enabled.load() || configured_percentage <= 0 || ceiling <= configured_percentage) {
+    if (!adaptive_fec_enabled.load() || configured_percentage <= 0) {
+      return;
+    }
+    if (ceiling <= configured_percentage) {
+      BOOST_LOG(info) << "Adaptive FEC [session "sv << session_id << "]: off, "sv << adaptive_fec_max_key << " ("sv << ceiling
+                      << "%) is not above fec_percentage ("sv << configured_percentage << "%)"sv;
       return;
     }
 
@@ -270,6 +275,19 @@ namespace office {
   int adaptive_fec_percentage(const adaptive_fec_session_t &state, const int configured_percentage) {
     const auto percentage = state.percentage.load(std::memory_order_relaxed);
     return percentage < 0 ? configured_percentage : percentage;
+  }
+
+  fec_block_fit_t fit_fec_blocks(const std::size_t payload_size, const std::size_t blocksize, const int percentage, const int floor_percentage, const std::size_t max_blocks, int (*const max_data_shards)(int)) {
+    const auto blocks_at = [&](const int pct) -> std::size_t {
+      const auto max_data_per_block = static_cast<std::size_t>(max_data_shards(pct)) * blocksize;
+      return (payload_size + (max_data_per_block - 1)) / max_data_per_block;
+    };
+
+    const auto blocks = blocks_at(percentage);
+    if (blocks <= max_blocks || percentage <= floor_percentage || floor_percentage < 0) {
+      return {percentage, blocks};
+    }
+    return {floor_percentage, blocks_at(floor_percentage)};
   }
 
   void apply_adaptive_fec_config(config::config_map_t &vars) {

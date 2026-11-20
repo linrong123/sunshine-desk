@@ -215,6 +215,32 @@ namespace office {
   int adaptive_fec_percentage(const adaptive_fec_session_t &state, int configured_percentage);
 
   /**
+   * @brief FEC percentage and block count chosen for one video frame.
+   */
+  struct fec_block_fit_t {
+    int percentage;  ///< FEC percentage to encode the frame with.
+    std::size_t blocks;  ///< FEC blocks needed at `percentage`; may still exceed the protocol limit.
+  };
+
+  /**
+   * @brief Fit a frame into the protocol's FEC block limit, falling back to the configured floor.
+   *
+   * A higher FEC percentage shrinks the data shards per block, so a large frame may need more
+   * blocks than the protocol allows. When an adaptive @p percentage above @p floor_percentage does
+   * not fit, the frame is re-planned at the floor. If even the floor does not fit, the caller keeps
+   * upstream behavior and sends the frame without FEC.
+   *
+   * @param payload_size Frame size in bytes after inserting packet headers.
+   * @param blocksize Bytes per packet shard.
+   * @param percentage Percentage chosen for the session.
+   * @param floor_percentage Configured `fec_percentage`.
+   * @param max_blocks Protocol limit on FEC blocks per frame.
+   * @param max_data_shards Data shards per block at a given percentage.
+   * @return The percentage to use and the blocks it needs.
+   */
+  fec_block_fit_t fit_fec_blocks(std::size_t payload_size, std::size_t blocksize, int percentage, int floor_percentage, std::size_t max_blocks, int (*max_data_shards)(int));
+
+  /**
    * @brief Apply `desk_adaptive_fec` and `desk_adaptive_fec_max`, removing them from @p vars.
    * @param vars Parsed configuration; office keys are consumed.
    */

@@ -7,6 +7,7 @@
 // standard includes
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <random>
@@ -527,4 +528,37 @@ TEST(OfficeAdaptiveFecTest, ConfigParsesAndConsumesKeys) {
 
   office::adaptive_fec_enabled = enabled;
   office::adaptive_fec_max = ceiling;
+}
+
+TEST(OfficeAdaptiveFecTest, LargeFrameFallsBackToFloorBeforeSkippingFec) {
+  // Same formula as stream::fec::max_data_shards: 255 shards shared by data and parity.
+  constexpr auto max_data_shards = [](const int percentage) {
+    return (255 * 100) / (100 + percentage);
+  };
+  constexpr std::size_t blocksize = 1000;
+  constexpr std::size_t max_blocks = 4;
+  const auto fit = [&](const std::size_t packets, const int percentage, const int floor) {
+    return office::fit_fec_blocks(packets * blocksize, blocksize, percentage, floor, max_blocks, max_data_shards);
+  };
+
+  // 159 data shards per block at 60%, 212 at 20%.
+  auto result = fit(600, 60, 20);  // 4 blocks at 60% fit.
+  EXPECT_EQ(result.percentage, 60);
+  EXPECT_EQ(result.blocks, 4u);
+
+  result = fit(700, 60, 20);  // 5 blocks at 60%, 4 at the floor.
+  EXPECT_EQ(result.percentage, 20);
+  EXPECT_EQ(result.blocks, 4u);
+
+  result = fit(900, 60, 20);  // Too large even at the floor: the caller skips FEC as upstream does.
+  EXPECT_EQ(result.percentage, 20);
+  EXPECT_EQ(result.blocks, 5u);
+
+  result = fit(900, 20, 20);  // Not adapting: unchanged from upstream.
+  EXPECT_EQ(result.percentage, 20);
+  EXPECT_EQ(result.blocks, 5u);
+
+  result = fit(1, 60, 20);
+  EXPECT_EQ(result.percentage, 60);
+  EXPECT_EQ(result.blocks, 1u);
 }
