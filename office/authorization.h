@@ -10,6 +10,7 @@
 
 // standard includes
 #include <atomic>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -78,6 +79,26 @@ namespace office {
   bool set_confirm_connections(bool enabled, bool persist);
 
   /**
+   * @brief Set or remove one key in the configuration file, keeping every other key.
+   *
+   * The file is rewritten through a temporary sibling and a rename, so an interrupted write never
+   * truncates it. Keys are written sorted as `key = value`; comments are not preserved. Only the file
+   * changes; the running configuration is not reloaded.
+   *
+   * @param key Configuration key.
+   * @param value New value, or `std::nullopt` to remove the key and fall back to the built-in default.
+   * @return `true` if the file was written.
+   */
+  bool persist_config_value(std::string_view key, const std::optional<std::string> &value);
+
+  /**
+   * @brief Read one key from the configuration file.
+   * @param key Configuration key.
+   * @return The value in the file, or `std::nullopt` if the key is absent.
+   */
+  std::optional<std::string> read_config_value(std::string_view key);
+
+  /**
    * @brief Handle `/office/connect-request` for an already verified client.
    * @param actions Every `action` query value of the request.
    * @param client Verified client identity; an empty certificate (connection unknown or client disabled) gets `status_code=401`.
@@ -123,6 +144,13 @@ namespace office {
    * @param cert Verified client certificate PEM.
    */
   void client_quit(const std::string &cert);
+
+  /**
+   * @brief Certificates of the clients with a running stream, as reported by the stream hooks.
+   * @return One entry per client with at least one running stream, sorted; an empty string stands for
+   *         streams of unpaired test sessions.
+   */
+  std::vector<std::string> streaming_certs();
 
   /**
    * @brief Enable or disable a paired client from the host.

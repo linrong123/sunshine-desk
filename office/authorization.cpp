@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <map>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,11 +52,6 @@ namespace office {
     }
 
     /**
-     * @brief Rewrite the configuration file with `desk_confirm_connections` set.
-     * @param enabled Value to write.
-     * @return `true` if the file was written.
-     */
-    /**
      * @brief Replace a file through a temporary sibling so an interrupted write never truncates it.
      * @param path File to replace.
      * @param content New file content.
@@ -82,22 +79,21 @@ namespace office {
       return true;
     }
 
-    bool persist_confirm_connections(const bool enabled) {
-      const auto &path = config::sunshine.config_file;
-      auto vars = config::parse_config(file_handler::read_file(path.c_str()));
-      vars.insert_or_assign(std::string {confirm_connections_key}, enabled ? "enabled"s : "disabled"s);
+    /**
+     * @brief Running streams per client certificate.
+     */
+    struct stream_counts_t {
+      std::mutex mutex;  ///< Guards @ref counts.
+      std::map<std::string, int, std::less<>> counts;  ///< Running streams keyed by certificate.
+    };
 
-      std::vector<std::pair<std::string, std::string>> sorted {vars.begin(), vars.end()};
-      std::ranges::sort(sorted);
-      std::string content;
-      for (const auto &[key, value] : sorted) {
-        content += std::format("{} = {}\n", key, value);
-      }
-      if (!replace_file(path, content)) {
-        BOOST_LOG(warning) << "Failed to persist config option '"sv << confirm_connections_key << "'"sv;
-        return false;
-      }
-      return true;
+    /**
+     * @brief Access the process-wide stream counts.
+     * @return Counts updated by the stream hooks.
+     */
+    stream_counts_t &stream_counts() {
+      static stream_counts_t counts;
+      return counts;
     }
 
     /**
@@ -144,7 +140,38 @@ namespace office {
       connect_tracker().clear();
     }
     BOOST_LOG(info) << "Per-connection host approval "sv << (enabled ? "enabled"sv : "disabled"sv);
-    return !persist || persist_confirm_connections(enabled);
+    return !persist || persist_config_value(confirm_connections_key, enabled ? "enabled"s : "disabled"s);
+  }
+
+  bool persist_config_value(const std::string_view key, const std::optional<std::string> &value) {
+    const auto &path = config::sunshine.config_file;
+    auto vars = config::parse_config(file_handler::read_file(path.c_str()));
+    if (value) {
+      vars.insert_or_assign(std::string {key}, *value);
+    } else {
+      vars.erase(std::string {key});
+    }
+
+    std::vector<std::pair<std::string, std::string>> sorted {vars.begin(), vars.end()};
+    std::ranges::sort(sorted);
+    std::string content;
+    for (const auto &[name, entry] : sorted) {
+      content += std::format("{} = {}\n", name, entry);
+    }
+    if (!replace_file(path, content)) {
+      BOOST_LOG(warning) << "Failed to persist config option '"sv << key << "'"sv;
+      return false;
+    }
+    return true;
+  }
+
+  std::optional<std::string> read_config_value(const std::string_view key) {
+    auto vars = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
+    const auto it = vars.find(std::string {key});
+    if (it == vars.end()) {
+      return std::nullopt;
+    }
+    return std::move(it->second);
   }
 
   pt::ptree connect_request(const std::vector<std::string> &actions, const client_identity_t &client) {
@@ -211,12 +238,24 @@ namespace office {
   }
 
   void stream_started(const std::string &cert) {
+    {
+      auto &streams = stream_counts();
+      const std::scoped_lock lock {streams.mutex};
+      ++streams.counts[cert];
+    }
     if (!cert.empty()) {
       connect_tracker().stream_started(cert);
     }
   }
 
   void stream_stopped(const std::string &cert) {
+    {
+      auto &streams = stream_counts();
+      const std::scoped_lock lock {streams.mutex};
+      if (const auto it = streams.counts.find(cert); it != streams.counts.end() && --it->second <= 0) {
+        streams.counts.erase(it);
+      }
+    }
     if (!cert.empty()) {
       connect_tracker().stream_stopped(cert);
     }
@@ -226,6 +265,17 @@ namespace office {
     if (!cert.empty()) {
       connect_tracker().quit(cert);
     }
+  }
+
+  std::vector<std::string> streaming_certs() {
+    auto &streams = stream_counts();
+    const std::scoped_lock lock {streams.mutex};
+    std::vector<std::string> certs;
+    certs.reserve(streams.counts.size());
+    for (const auto &[cert, count] : streams.counts) {
+      certs.push_back(cert);
+    }
+    return certs;
   }
 
   bool set_client_access(const std::string_view uuid, const bool enabled) {
