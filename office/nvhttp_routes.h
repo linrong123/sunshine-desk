@@ -48,6 +48,9 @@ namespace office {
 
   /**
    * @brief Register every Office endpoint on the GameStream HTTPS server.
+   *
+   * Also caps each request (headers and body) at @ref clipboard_max_bytes; a larger
+   * `Content-Length` is answered with a bare HTTP 413 before the body is read.
    * @param server HTTPS server whose TLS verification admits only enabled paired clients.
    */
   void register_https_routes(https_server_t &server);
@@ -65,6 +68,13 @@ namespace office {
    * @param request Parameterless GET, or POST with `scale` and the previously queried `displayToken`.
    */
   void display_scale(https_response_t response, https_request_t request);
+
+  /**
+   * @brief Read or write the host's text clipboard for the streaming paired client.
+   * @param response GameStream XML response; see `office/CLIPBOARD.md`.
+   * @param request GET without query or body, or POST with raw UTF-8 text as the body.
+   */
+  void clipboard(https_response_t response, https_request_t request);
 
   /**
    * @brief Start, query, or cancel the calling client's connection request.

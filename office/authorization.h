@@ -64,7 +64,14 @@ namespace office {
   bool confirm_effective();
 
   /**
-   * @brief Parse and consume Office authorization keys from a configuration map.
+   * @brief Parse a boolean Office configuration value.
+   * @param value Raw value: `enabled`, `true`, `on`, `yes`, `1` or `disabled`, `false`, `off`, `no`, `0`.
+   * @return Parsed value, or `std::nullopt` when the value is not recognized.
+   */
+  std::optional<bool> parse_config_switch(std::string_view value);
+
+  /**
+   * @brief Parse and consume Office keys (authorization and clipboard) from a configuration map.
    * @param vars Parsed configuration entries; consumed keys are erased.
    */
   void apply_config(config::config_map_t &vars);

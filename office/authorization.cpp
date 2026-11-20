@@ -22,6 +22,7 @@
 
 // local includes
 #include "office/authorization.h"
+#include "office/clipboard.h"
 #include "src/file_handler.h"
 #include "src/logging.h"
 #include "src/nvhttp.h"
@@ -149,6 +150,14 @@ namespace office {
     return confirm_connections.load() && prompt_available.load();
   }
 
+  std::optional<bool> parse_config_switch(const std::string_view value) {
+    bool result = false;
+    if (!parse_switch(value, result)) {
+      return std::nullopt;
+    }
+    return result;
+  }
+
   void apply_config(config::config_map_t &vars) {
     bool enabled = false;
     if (const auto it = vars.find(confirm_connections_key); it != vars.end()) {
@@ -161,6 +170,7 @@ namespace office {
     if (!enabled) {
       connect_tracker().clear();
     }
+    apply_clipboard_config(vars);
   }
 
   namespace {

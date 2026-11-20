@@ -15,6 +15,7 @@
 
 // local includes
 #include "office/authorization.h"
+#include "office/clipboard.h"
 #include "office/display_scale.h"
 #include "office/nvhttp_routes.h"
 #include "office/policy.h"
@@ -40,6 +41,8 @@ namespace office {
       https_route_t {"^/office/display-scale$", "GET", display_scale},
       https_route_t {"^/office/display-scale$", "POST", display_scale},
       https_route_t {"^/office/connect-request$", "GET", connect_request_handler},
+      https_route_t {"^/office/clipboard$", "GET", clipboard},
+      https_route_t {"^/office/clipboard$", "POST", clipboard},
     };
 
     /**
@@ -70,11 +73,16 @@ namespace office {
     tree.put("root.OfficeCursorSet", 1);
 #ifdef _WIN32
     tree.put("root.OfficeDisplayScale", 1);
+    tree.put("root.OfficeClipboard", 1);
 #endif
     add_connect_capability(tree);
   }
 
   void register_https_routes(https_server_t &server) {
+    // No GameStream request carries a large body; the largest is a clipboard POST. Without a cap,
+    // Simple-Web-Server buffers the whole Content-Length before routing. With it, a larger body is
+    // answered with a bare HTTP 413 before it is read.
+    server.config.max_request_streambuf_size = clipboard_max_bytes;
     for (const auto &route : https_routes) {
       server.resource[std::string {route.pattern}][std::string {route.method}] = route.handler;
     }
@@ -125,6 +133,12 @@ namespace office {
       tree.put("root.message", result.message);
     }
     write_xml(response, tree);
+  }
+
+  void clipboard(https_response_t response, https_request_t request) {
+    const auto body = request->content.string();
+    const auto query_empty = request->query_string.empty();
+    write_xml(response, clipboard_request(request->method == "POST", query_empty, body, request_identity(request).cert));
   }
 
   void connect_request_handler(https_response_t response, https_request_t request) {

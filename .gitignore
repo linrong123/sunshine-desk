@@ -64,3 +64,4 @@ venv/
 
 # Isolated Office tooling and generated artifacts
 .work/
+.claude/wip/

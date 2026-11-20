@@ -10,6 +10,7 @@
 
 // standard includes
 #include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -30,6 +31,7 @@
 
 // office includes
 #include "office/authorization.h"
+#include "office/clipboard.h"
 #include "office/nvhttp_routes.h"
 
 namespace fs = std::filesystem;
@@ -604,4 +606,126 @@ TEST_F(OfficeConnectRequestTlsTest, DisablingOrDeletingAClientRevokesPermitsAndG
   ASSERT_TRUE(office::delete_client(paired_uuid));
   EXPECT_EQ(tracker.status(cert), office::connect_state_e::none);
   EXPECT_EQ(connect("action=status").get<int>("root.<xmlattr>.status_code"), 401);
+}
+
+namespace {
+  /** @brief Synthetic clipboard holding one text value, never the physical clipboard. */
+  class FakeClipboardBackend final: public office::clipboard_backend {
+  public:
+    /** @copydoc office::clipboard_backend::read */
+    office::clipboard_read_t read([[maybe_unused]] const std::size_t max_units) override {
+      ++reads;
+      return {200, sequence, !text.empty(), false, text};
+    }
+
+    /** @copydoc office::clipboard_backend::write */
+    office::clipboard_write_t write(const std::string &value) override {
+      ++writes;
+      text = value;
+      return {200, ++sequence};
+    }
+
+    std::string text {"host
+text"};  ///< Current clipboard text with Windows line endings.
+    std::uint32_t sequence {7};  ///< Synthetic clipboard sequence number.
+    int reads {};  ///< Number of reads that reached the backend.
+    int writes {};  ///< Number of writes that reached the backend.
+  };
+}  // namespace
+
+/** @brief Production TLS endpoint with a synthetic clipboard backend. */
+class OfficeClipboardTlsTest: public OfficeCursorTlsTest {
+protected:
+  /** @brief Install a fake before starting the shared production HTTPS server. */
+  void SetUp() override {
+    original_sync = office::clipboard_sync.load();
+    office::clipboard_sync.store(true);
+    auto backend = std::make_unique<FakeClipboardBackend>();
+    fake = backend.get();
+    office::set_clipboard_backend_for_test(std::move(backend));
+    OfficeCursorTlsTest::SetUp();
+  }
+
+  /** @brief Stop request threads before removing the fake and the stream. */
+  void TearDown() override {
+    if (!streaming_cert.empty()) {
+      office::stream_stopped(streaming_cert);
+    }
+    OfficeCursorTlsTest::TearDown();
+    office::set_clipboard_backend_for_test(nullptr);
+    office::clipboard_sync.store(original_sync);
+    office::connect_tracker().clear();
+  }
+
+  /** @brief Mark the paired test client as streaming. */
+  void start_stream() {
+    streaming_cert = nvhttp::get_cert_by_uuid(paired_uuid);
+    ASSERT_FALSE(streaming_cert.empty());
+    office::stream_started(streaming_cert);
+  }
+
+  FakeClipboardBackend *fake {};  ///< Installed synthetic clipboard, owned by the service.
+  std::string streaming_cert;  ///< Certificate marked as streaming, stopped at teardown.
+
+private:
+  bool original_sync {true};  ///< Restored clipboard switch.
+};
+
+/** @brief Verify the streaming paired client reads and writes through the production route. */
+TEST_F(OfficeClipboardTlsTest, StreamingClientReadsAndWrites) {
+  start_stream();
+  const auto read = request_xml("/office/clipboard");
+  ASSERT_EQ(read.get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(read.get<int>("root.sequence"), 7);
+  EXPECT_EQ(read.get<int>("root.hasText"), 1);
+  EXPECT_EQ(read.get<std::string>("root.text"), office::base64_encode("host
+text"));
+
+  const auto written = request_xml("/office/clipboard", "paired", "POST", "client
+text");
+  ASSERT_EQ(written.get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(written.get<int>("root.sequence"), 8);
+  EXPECT_EQ(fake->text, "client
+text");
+
+  EXPECT_EQ(request_xml("/office/clipboard", "paired", "POST", std::string(office::clipboard_max_bytes, 'x')).get<int>("root.<xmlattr>.status_code"), 200);
+  EXPECT_EQ(request_xml("/office/clipboard", "paired", "POST", "À¯").get<int>("root.<xmlattr>.status_code"), 400);
+  EXPECT_EQ(request_status("/office/clipboard?x=1"), 400);
+  EXPECT_EQ(fake->writes, 2);
+}
+
+/** @brief Verify the route refuses clients without a running stream and a disabled host switch. */
+TEST_F(OfficeClipboardTlsTest, RequiresStreamSwitchAndKnownCertificate) {
+  EXPECT_EQ(request_status("/office/clipboard"), 403);
+  EXPECT_EQ(request_xml("/office/clipboard", "paired", "POST", "text").get<int>("root.<xmlattr>.status_code"), 403);
+
+  start_stream();
+  office::clipboard_sync.store(false);
+  const auto disabled = request_xml("/office/clipboard");
+  EXPECT_EQ(disabled.get<int>("root.<xmlattr>.status_code"), 403);
+  EXPECT_FALSE(disabled.get<std::string>("root.<xmlattr>.status_message").empty());
+  office::clipboard_sync.store(true);
+
+  EXPECT_EQ(request_status("/office/clipboard", "unknown"), 401);
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, false));
+  EXPECT_EQ(request_status("/office/clipboard"), 401);
+  ASSERT_TRUE(nvhttp::set_client_enabled(paired_uuid, true));
+  EXPECT_EQ(fake->reads, 0);
+  EXPECT_EQ(fake->writes, 0);
+}
+
+/** @brief Verify an oversized body is refused from its Content-Length before it is read. */
+TEST_F(OfficeClipboardTlsTest, OversizedBodyIsRefusedBeforeReading) {
+  start_stream();
+  SimpleWeb::Client<SimpleWeb::HTTPS> client {
+    std::format("127.0.0.1:{}", port.load()),
+    false,
+    (directory / "paired.crt").string(),
+    (directory / "paired.key").string()
+  };
+  client.config.timeout = 5;
+  const SimpleWeb::CaseInsensitiveMultimap header {{"Content-Length", std::to_string(2 * office::clipboard_max_bytes)}};
+  const auto response = client.request("POST", "/office/clipboard", "x", header);
+  EXPECT_TRUE(response->status_code.starts_with("413")) << response->status_code;
+  EXPECT_EQ(fake->writes, 0);
 }

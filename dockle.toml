@@ -57,6 +57,9 @@ inputs = [
   "office/main_window.cpp",
   "office/windows/main_window.h",
   "office/windows/main_window.cpp",
+  "office/clipboard.h",
+  "office/clipboard.cpp",
+  "office/windows/clipboard.cpp",
 ]
 image_paths = ["docs/images"]
 predefined = [

@@ -28,8 +28,10 @@ TEST(OfficePolicy, ServerinfoAdvertisesOfficeCapabilities) {
   EXPECT_EQ(tree.get<int>("root.OfficeCursorSet"), 1);
 #ifdef _WIN32
   EXPECT_EQ(tree.get<int>("root.OfficeDisplayScale"), 1);
+  EXPECT_EQ(tree.get<int>("root.OfficeClipboard"), 1);
 #else
   EXPECT_FALSE(tree.get_optional<int>("root.OfficeDisplayScale").has_value());
+  EXPECT_FALSE(tree.get_optional<int>("root.OfficeClipboard").has_value());
 #endif
   EXPECT_EQ(tree.get<std::string>("root.hostname"), "office");
 }
