@@ -10,6 +10,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 // lib includes
@@ -210,9 +211,14 @@ namespace {
      * @return `true` if the atomic write left its temporary file behind.
      */
     bool temporary_left() const {
-      auto temporary = config_file;
-      temporary += office::config_temporary_suffix;
-      return std::filesystem::exists(temporary);
+      const auto prefix = config_file.filename().string() + std::string {office::config_temporary_suffix};
+      std::error_code error;
+      for (const auto &entry : std::filesystem::directory_iterator(config_file.parent_path(), error)) {
+        if (entry.path().filename().string().starts_with(prefix)) {
+          return true;
+        }
+      }
+      return false;
     }
 
     std::filesystem::path config_file;  ///< Temporary configuration file.
@@ -238,5 +244,25 @@ namespace {
 
     const auto vars = config::parse_config(file_handler::read_file(config_file.string().c_str()));
     EXPECT_EQ(vars.size(), 1U);
+  }
+
+  TEST_F(OfficeMainWindowConfigTest, AcceptedNamesSurviveWriteAndReadBack) {
+    ASSERT_EQ(file_handler::write_file(config_file.string().c_str(), "adapter_name = Test\n"), 0);
+    for (const auto &[input, expected] : std::vector<std::pair<std::string, std::string>> {
+           {"a=b", "a=b"},
+           {"name = value = x", "name = value = x"},
+           {"\"Desk\" 'PC'", "\"Desk\" 'PC'"},
+           {"会议室电脑", "会议室电脑"},
+           {"  前台 PC  ", "前台 PC"},
+           {"\tDesk\t", "Desk"},
+           {"a]b", "a]b"},
+         }) {
+      const auto name = office::normalize_device_name(input);
+      ASSERT_EQ(name, expected) << input;
+      ASSERT_TRUE(office::persist_config_value(office::device_name_key, *name)) << input;
+      EXPECT_EQ(office::read_config_value(office::device_name_key), expected) << input;
+      EXPECT_EQ(office::read_config_value("adapter_name"), "Test") << input;
+      EXPECT_FALSE(temporary_left()) << input;
+    }
   }
 }  // namespace

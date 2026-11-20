@@ -5,11 +5,14 @@
 // standard includes
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,14 +55,40 @@ namespace office {
     }
 
     /**
+     * @brief Lock held for every read and read-modify-write of the configuration file.
+     * @return Process-wide configuration file mutex.
+     */
+    std::mutex &config_mutex() {
+      static std::mutex mutex;
+      return mutex;
+    }
+
+    /**
+     * @brief Counter that makes each temporary configuration file name unique within the process.
+     * @return Next write sequence number.
+     */
+    std::atomic<std::uint64_t> &config_sequence() {
+      static std::atomic<std::uint64_t> sequence {0};
+      return sequence;
+    }
+
+    /**
+     * @brief Random token that keeps temporary file names of different processes apart.
+     * @return Token chosen once per process.
+     */
+    std::uint32_t process_token() {
+      static const std::uint32_t token = std::random_device {}();
+      return token;
+    }
+
+    /**
      * @brief Replace a file through a temporary sibling so an interrupted write never truncates it.
      * @param path File to replace.
      * @param content New file content.
      * @return `false` if the temporary file could not be written or moved into place; the file is then unchanged.
      */
     bool replace_file(const std::filesystem::path &path, const std::string &content) {
-      auto temporary = path;
-      temporary += config_temporary_suffix;
+      const auto temporary = config_temporary_path(path, config_sequence().fetch_add(1));
       std::error_code ignored;
       {
         std::ofstream out(temporary, std::ios::trunc);
@@ -134,38 +163,68 @@ namespace office {
     }
   }
 
+  namespace {
+    /**
+     * @brief Set or remove one configuration key; the caller holds @ref config_mutex.
+     * @param key Configuration key.
+     * @param value New value, or `std::nullopt` to remove the key.
+     * @return `true` if the file was written.
+     */
+    bool persist_config_value_locked(const std::string_view key, const std::optional<std::string> &value) {
+      const auto &path = config::sunshine.config_file;
+      auto vars = config::parse_config(file_handler::read_file(path.c_str()));
+      if (value) {
+        vars.insert_or_assign(std::string {key}, *value);
+      } else {
+        vars.erase(std::string {key});
+      }
+
+      std::vector<std::pair<std::string, std::string>> sorted {vars.begin(), vars.end()};
+      std::ranges::sort(sorted);
+      std::string content;
+      for (const auto &[name, entry] : sorted) {
+        content += std::format("{} = {}\n", name, entry);
+      }
+      if (!replace_file(path, content)) {
+        BOOST_LOG(warning) << "Failed to persist config option '"sv << key << "'"sv;
+        return false;
+      }
+      return true;
+    }
+  }  // namespace
+
   bool set_confirm_connections(const bool enabled, const bool persist) {
+    // Holding the configuration lock across the switch and the write keeps memory and file in step
+    // when two toggles race.
+    std::unique_lock lock {config_mutex(), std::defer_lock};
+    if (persist) {
+      lock.lock();
+    }
     confirm_connections.store(enabled);
     if (!enabled) {
       connect_tracker().clear();
     }
     BOOST_LOG(info) << "Per-connection host approval "sv << (enabled ? "enabled"sv : "disabled"sv);
-    return !persist || persist_config_value(confirm_connections_key, enabled ? "enabled"s : "disabled"s);
+    return !persist || persist_config_value_locked(confirm_connections_key, enabled ? "enabled"s : "disabled"s);
   }
 
   bool persist_config_value(const std::string_view key, const std::optional<std::string> &value) {
-    const auto &path = config::sunshine.config_file;
-    auto vars = config::parse_config(file_handler::read_file(path.c_str()));
-    if (value) {
-      vars.insert_or_assign(std::string {key}, *value);
-    } else {
-      vars.erase(std::string {key});
-    }
+    const std::scoped_lock lock {config_mutex()};
+    return persist_config_value_locked(key, value);
+  }
 
-    std::vector<std::pair<std::string, std::string>> sorted {vars.begin(), vars.end()};
-    std::ranges::sort(sorted);
-    std::string content;
-    for (const auto &[name, entry] : sorted) {
-      content += std::format("{} = {}\n", name, entry);
-    }
-    if (!replace_file(path, content)) {
-      BOOST_LOG(warning) << "Failed to persist config option '"sv << key << "'"sv;
-      return false;
-    }
-    return true;
+  std::filesystem::path config_temporary_path(const std::filesystem::path &config_file, const std::uint64_t sequence) {
+    auto temporary = config_file;
+    temporary += std::format("{}.{:08x}-{}", config_temporary_suffix, process_token(), sequence);
+    return temporary;
+  }
+
+  std::uint64_t next_config_temporary_sequence() {
+    return config_sequence().load();
   }
 
   std::optional<std::string> read_config_value(const std::string_view key) {
+    const std::scoped_lock lock {config_mutex()};
     auto vars = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
     const auto it = vars.find(std::string {key});
     if (it == vars.end()) {

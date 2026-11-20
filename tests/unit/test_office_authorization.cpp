@@ -8,7 +8,9 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -542,6 +544,22 @@ namespace {
   /**
    * @brief Isolate configuration parsing from the user's Sunshine configuration.
    */
+  /**
+   * @brief Whether any temporary sibling of a configuration file is left in its directory.
+   * @param config_file Configuration file.
+   * @return `true` if an atomic write left a temporary file behind.
+   */
+  bool config_temporary_left(const std::filesystem::path &config_file) {
+    const auto prefix = config_file.filename().string() + std::string {office::config_temporary_suffix};
+    std::error_code error;
+    for (const auto &entry : std::filesystem::directory_iterator(config_file.parent_path(), error)) {
+      if (entry.path().filename().string().starts_with(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   class OfficeConfigTest: public testing::Test {
   protected:
     /**
@@ -638,17 +656,64 @@ namespace {
     ASSERT_TRUE(office::set_confirm_connections(true, false));
     vars = config::parse_config(file_handler::read_file(config_file.string().c_str()));
     EXPECT_EQ(vars["desk_confirm_connections"], "disabled");
-    auto temporary = config_file;
-    temporary += office::config_temporary_suffix;
-    EXPECT_FALSE(std::filesystem::exists(temporary));
+    EXPECT_FALSE(config_temporary_left(config_file));
+  }
+
+  TEST_F(OfficeConfigTest, TemporaryFileNamesAreUniquePerWrite) {
+    const auto first = office::config_temporary_path(config_file, 1);
+    EXPECT_NE(first, office::config_temporary_path(config_file, 2));
+    EXPECT_EQ(first, office::config_temporary_path(config_file, 1));
+    EXPECT_TRUE(first.filename().string().starts_with(config_file.filename().string() + std::string {office::config_temporary_suffix}));
+    EXPECT_EQ(first.parent_path(), config_file.parent_path());
+
+    const auto before = office::next_config_temporary_sequence();
+    ASSERT_TRUE(office::persist_config_value("adapter_name", "Test"s));
+    EXPECT_EQ(office::next_config_temporary_sequence(), before + 1);
+  }
+
+  TEST_F(OfficeConfigTest, ConcurrentWritesKeepEveryUpdate) {
+    ASSERT_EQ(file_handler::write_file(config_file.string().c_str(), "adapter_name = Test\n"), 0);
+    constexpr int writers = 8;
+    constexpr int rounds = 20;
+    std::vector<std::thread> threads;
+    for (int writer = 0; writer < writers; ++writer) {
+      threads.emplace_back([writer] {
+        for (int round = 0; round < rounds; ++round) {
+          EXPECT_TRUE(office::persist_config_value(std::format("desk_test_key_{}", writer), std::to_string(round)));
+          EXPECT_TRUE(office::read_config_value(std::format("desk_test_key_{}", writer)).has_value());
+        }
+      });
+    }
+    // Two toggles racing with the writers, as when the tray switch is clicked twice quickly.
+    for (const bool enabled : {true, false}) {
+      threads.emplace_back([enabled] {
+        for (int round = 0; round < rounds; ++round) {
+          EXPECT_TRUE(office::set_confirm_connections(enabled, true));
+        }
+      });
+    }
+    for (auto &thread : threads) {
+      thread.join();
+    }
+
+    const auto vars = config::parse_config(file_handler::read_file(config_file.string().c_str()));
+    for (int writer = 0; writer < writers; ++writer) {
+      const auto it = vars.find(std::format("desk_test_key_{}", writer));
+      ASSERT_NE(it, vars.end()) << writer;
+      EXPECT_EQ(it->second, std::to_string(rounds - 1)) << writer;
+    }
+    EXPECT_EQ(vars.at("adapter_name"), "Test");
+    // The switch in memory matches the value the last toggle wrote.
+    EXPECT_EQ(vars.at(std::string {office::confirm_connections_key}), office::confirm_connections.load() ? "enabled" : "disabled");
+    EXPECT_EQ(vars.size(), static_cast<std::size_t>(writers) + 2);
+    EXPECT_FALSE(config_temporary_left(config_file));
   }
 
   TEST_F(OfficeConfigTest, FailedPersistLeavesTheConfigFileUnchanged) {
     const std::string original = "wan_encryption_mode = 1\ndesk_confirm_connections = disabled\n";
     ASSERT_EQ(file_handler::write_file(config_file.string().c_str(), original), 0);
-    auto temporary = config_file;
-    temporary += office::config_temporary_suffix;
-    // A directory in place of the temporary file makes the write fail before the rename.
+    const auto temporary = office::config_temporary_path(config_file, office::next_config_temporary_sequence());
+    // A directory in place of the next temporary file makes the write fail before the rename.
     ASSERT_TRUE(std::filesystem::create_directory(temporary));
     EXPECT_FALSE(office::set_confirm_connections(true, true));
     EXPECT_EQ(file_handler::read_file(config_file.string().c_str()), original);
