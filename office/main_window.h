@@ -116,7 +116,10 @@ namespace office {
    *
    * Surrounding spaces are trimmed. Control characters, `#`, a leading `[`, and names longer than
    * @ref device_name_max_length code points are rejected because the configuration file format
-   * cannot carry them safely.
+   * cannot carry them safely. Overlong names are rejected, never truncated, so a multi-byte
+   * character is never cut. The limit counts code points, not UTF-8 bytes: upstream only reports
+   * `sunshine_name` in serverinfo, while the mDNS instance name comes from the computer name (see
+   * office/MAIN_WINDOW.md).
    *
    * @param input Name typed by the user, UTF-8.
    * @return The normalized name; an empty string means "use the computer name"; `std::nullopt` if invalid.

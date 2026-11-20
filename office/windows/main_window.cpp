@@ -3,8 +3,10 @@
  * @brief Windows Sunshine Desk main window and the device actions shared with the tray.
  *
  * The window lives on the host prompt thread (see office/windows/authorization_ui.cpp) and is
- * refreshed by its 500 ms timer while it is open. What it shows is decided by the
- * platform-independent helpers in office/main_window.h. See office/MAIN_WINDOW.md.
+ * refreshed by its 500 ms timer while it is open. Reading the configuration file and enumerating
+ * network adapters run on worker threads that post their results back to the window. What it
+ * shows is decided by the platform-independent helpers in office/main_window.h. See
+ * office/MAIN_WINDOW.md.
  */
 #ifdef _WIN32
 
@@ -13,6 +15,8 @@
   #include <atomic>
   #include <cstring>
   #include <format>
+  #include <memory>
+  #include <mutex>
   #include <optional>
   #include <set>
   #include <string>
@@ -52,6 +56,23 @@ namespace office {
     constexpr unsigned name_refresh_ticks = 4;  ///< Ticks between re-reading the saved device name.
     constexpr unsigned address_refresh_ticks = 10;  ///< Ticks between re-enumerating network addresses.
     constexpr unsigned copied_feedback_ticks = 4;  ///< Ticks the "已复制" button text stays.
+    constexpr UINT refresh_done_message = WM_APP + 2;  ///< Posted to the window when a background refresh has a result (WM_APP + 1 is the open-window thread message).
+
+    /**
+     * @brief Hand-off between the background refresh threads and the window.
+     *
+     * Shared by the window and its workers so a worker that finishes after the window closed only
+     * finds a null @ref target. Every field is guarded by @ref mutex.
+     */
+    struct refresh_mailbox_t {
+      std::mutex mutex;  ///< Guards every field.
+      HWND target {};  ///< Window to notify; null once it is destroyed.
+      bool addresses_running {false};  ///< Whether an address scan is in progress.
+      bool name_running {false};  ///< Whether a device name read is in progress.
+      std::optional<std::vector<host_address_t>> addresses;  ///< Latest address scan not yet taken by the window.
+      std::optional<std::optional<std::string>> saved_name;  ///< Latest `sunshine_name` read not yet taken by the window.
+      std::string host_name;  ///< Computer name read with @ref saved_name.
+    };
 
     /**
      * @brief Control identifiers of the main window.
@@ -229,6 +250,9 @@ namespace office {
     HWND status {};  ///< Service status line.
 
     int http_port {default_http_port};  ///< GameStream HTTP port.
+    std::shared_ptr<refresh_mailbox_t> mailbox;  ///< Background refresh results of the open window.
+    bool addresses_loaded {false};  ///< Whether the first address scan has arrived.
+    bool name_loaded {false};  ///< Whether the saved device name has been read.
     std::vector<host_address_t> host_addresses;  ///< Addresses in the list.
     std::vector<device_row_t> rows;  ///< Devices in the list.
     std::optional<std::string> saved_name;  ///< `sunshine_name` in the configuration file.
@@ -315,16 +339,24 @@ namespace office {
 
       http_port = net::map_port(nvhttp::PORT_HTTP);
       set_text(hint, port_hint(http_port));
-      host_name = platf::get_host_name();
-      saved_name = read_config_value(device_name_key);
-      set_text(name, saved_name && !saved_name->empty() ? *saved_name : config::nvhttp.sunshine_name);
       SendMessageW(name, EM_SETLIMITTEXT, 4 * device_name_max_length, 0);
+      // Filled in when the configuration has been read (on_refresh_done).
+      EnableWindow(name, FALSE);
+      SendMessageW(addresses, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在获取网络地址…"));
+      EnableWindow(copy, FALSE);
 
       ticks = 0;
       copied_ticks = 0;
       host_addresses.clear();
       rows.clear();
-      refresh_addresses(true);
+      saved_name.reset();
+      host_name.clear();
+      addresses_loaded = false;
+      name_loaded = false;
+      mailbox = std::make_shared<refresh_mailbox_t>();
+      mailbox->target = hwnd;
+      start_address_scan();
+      start_name_read();
       refresh_devices(true);
       update_name_hint();
 
@@ -335,11 +367,91 @@ namespace office {
     }
 
     /**
-     * @brief Re-enumerate the network addresses and update the list when they changed.
+     * @brief Enumerate the network addresses on a worker thread unless a scan is still running.
+     *
+     * The result arrives through @ref refresh_done_message.
+     */
+    void start_address_scan() const {
+      {
+        const std::scoped_lock lock {mailbox->mutex};
+        if (mailbox->addresses_running) {
+          return;
+        }
+        mailbox->addresses_running = true;
+      }
+      std::thread([box = mailbox, port = http_port]() {
+        auto current = connectable_addresses(adapter_addresses(), port);
+        const std::scoped_lock lock {box->mutex};
+        box->addresses_running = false;
+        if (box->target) {
+          box->addresses = std::move(current);
+          PostMessageW(box->target, refresh_done_message, 0, 0);
+        }
+      }).detach();
+    }
+
+    /**
+     * @brief Read the saved device name and the computer name on a worker thread unless a read is still running.
+     *
+     * The result arrives through @ref refresh_done_message.
+     */
+    void start_name_read() const {
+      {
+        const std::scoped_lock lock {mailbox->mutex};
+        if (mailbox->name_running) {
+          return;
+        }
+        mailbox->name_running = true;
+      }
+      std::thread([box = mailbox]() {
+        auto saved = read_config_value(device_name_key);
+        auto computer = platf::get_host_name();
+        const std::scoped_lock lock {box->mutex};
+        box->name_running = false;
+        if (box->target) {
+          box->saved_name = std::move(saved);
+          box->host_name = std::move(computer);
+          PostMessageW(box->target, refresh_done_message, 0, 0);
+        }
+      }).detach();
+    }
+
+    /**
+     * @brief Apply the background refresh results waiting in the mailbox.
+     */
+    void on_refresh_done() {
+      std::optional<std::vector<host_address_t>> scanned;
+      std::optional<std::optional<std::string>> saved;
+      std::string computer;
+      {
+        const std::scoped_lock lock {mailbox->mutex};
+        scanned.swap(mailbox->addresses);
+        saved.swap(mailbox->saved_name);
+        computer = mailbox->host_name;
+      }
+      if (scanned) {
+        refresh_addresses(std::move(*scanned), !addresses_loaded);
+        addresses_loaded = true;
+      }
+      if (saved) {
+        saved_name = std::move(*saved);
+        host_name = std::move(computer);
+        if (!name_loaded) {
+          // An empty box stands for the upstream default, the computer name.
+          set_text(name, saved_name.value_or(std::string {}));
+          EnableWindow(name, TRUE);
+          name_loaded = true;
+        }
+        update_name_hint();
+      }
+    }
+
+    /**
+     * @brief Show freshly enumerated network addresses when they changed.
+     * @param current Connectable addresses from the latest scan.
      * @param force `true` to rebuild the list even if nothing changed.
      */
-    void refresh_addresses(const bool force) {
-      auto current = connectable_addresses(adapter_addresses(), http_port);
+    void refresh_addresses(std::vector<host_address_t> current, const bool force) {
       const auto same = std::ranges::equal(current, host_addresses, [](const host_address_t &a, const host_address_t &b) {
         return a.adapter == b.adapter && a.connect_text == b.connect_text;
       });
@@ -469,9 +581,8 @@ namespace office {
         return change;
       }
       change.effective = change.value->empty() ? host_name : *change.value;
-      const auto saved = saved_name.value_or(std::string {});
-      // With no saved name the box shows the computer name; keeping it is not a change.
-      change.write = *change.value != saved && !(saved.empty() && *change.value == host_name);
+      // With no saved name the box starts empty, so only a name the user typed is written.
+      change.write = *change.value != saved_name.value_or(std::string {});
       change.restart = restart_required(device_name_key) && change.effective != config::nvhttp.sunshine_name;
       return change;
     }
@@ -480,6 +591,11 @@ namespace office {
      * @brief Update the device name hint and the apply button.
      */
     void update_name_hint() const {
+      if (!name_loaded) {
+        set_text(name_hint, "正在读取设备名称…"s);
+        EnableWindow(apply, FALSE);
+        return;
+      }
       const auto change = plan_name_change();
       std::string hint;
       if (!change.value) {
@@ -504,6 +620,9 @@ namespace office {
      * @brief Apply the typed device name on a worker thread.
      */
     void apply_name() {
+      if (!name_loaded) {
+        return;
+      }
       const auto change = plan_name_change();
       if (!change.value || !(change.write || change.restart) || name_change_running.exchange(true)) {
         return;
@@ -615,6 +734,11 @@ namespace office {
      * @brief Forget every control handle after the window is destroyed.
      */
     void on_destroyed() {
+      if (mailbox) {
+        const std::scoped_lock lock {mailbox->mutex};
+        mailbox->target = nullptr;
+      }
+      mailbox.reset();
       hwnd = addresses = copy = name = apply = name_hint = devices = toggle = remove = confirm = status = nullptr;
     }
 
@@ -639,6 +763,11 @@ namespace office {
             return 0;
           }
           break;
+        case refresh_done_message:
+          if (self && self->mailbox) {
+            self->on_refresh_done();
+          }
+          return 0;
         case WM_CLOSE:
           DestroyWindow(window);
           return 0;
@@ -725,11 +854,10 @@ namespace office {
     ++w.ticks;
     w.refresh_devices(false);
     if (w.ticks % name_refresh_ticks == 0) {
-      w.saved_name = read_config_value(device_name_key);
-      w.update_name_hint();
+      w.start_name_read();
     }
     if (w.ticks % address_refresh_ticks == 0) {
-      w.refresh_addresses(false);
+      w.start_address_scan();
     }
     if (w.copied_ticks > 0 && --w.copied_ticks == 0) {
       set_text(w.copy, "复制地址");
