@@ -5,13 +5,15 @@
  * One dedicated UI thread owns every prompt window and polls the pending pairing sessions and
  * connection requests every 500 ms. Answers that may block (pairing, client changes, the delete
  * confirmation box) run on short-lived worker threads so neither the UI thread nor the tray thread
- * waits on network or file I/O. See office/CONNECTION.md for the behaviour and its limits.
+ * waits on network or file I/O. The same thread owns the Sunshine Desk main window
+ * (office/windows/main_window.cpp). See office/CONNECTION.md and office/MAIN_WINDOW.md.
  */
 #ifdef _WIN32
 
   // standard includes
   #include <algorithm>
   #include <array>
+  #include <atomic>
   #include <charconv>
   #include <cstdint>
   #include <format>
@@ -27,6 +29,8 @@
   // local includes
   #include "office/authorization.h"
   #include "office/authorization_ui.h"
+  #include "office/main_window.h"
+  #include "office/windows/main_window.h"
   #include "src/logging.h"
   #include "src/nvhttp.h"
   #include "src/platform/windows/utf_utils.h"
@@ -47,6 +51,7 @@ namespace office {
     constexpr int pin_control_id = 100;  ///< PIN edit control.
     constexpr int hint_control_id = 101;  ///< PIN validation hint.
     constexpr auto fallback_device_name = "Moonlight"sv;  ///< Name used when a client reports no valid name.
+    std::atomic<DWORD> prompt_thread_id {0};  ///< Running UI thread, or 0; target of @ref office::open_main_window.
 
     class prompt_ui_t;
 
@@ -381,13 +386,20 @@ namespace office {
 
       {
         prompt_ui_t ui {instance};
+        main_window_t main_window;
         prompt_available.store(true);
+        prompt_thread_id.store(GetCurrentThreadId());
         ready.set_value(GetCurrentThreadId());
         ui.tick();
 
         while (GetMessageW(&message, nullptr, 0, 0) > 0) {
           if (message.message == WM_TIMER && message.hwnd == nullptr) {
             ui.tick();
+            main_window.tick();
+            continue;
+          }
+          if (message.message == open_main_window_message && message.hwnd == nullptr) {
+            main_window.show();
             continue;
           }
           if (const auto root = message.hwnd ? GetAncestor(message.hwnd, GA_ROOT) : nullptr; root && IsDialogMessageW(root, &message)) {
@@ -396,11 +408,17 @@ namespace office {
           TranslateMessage(&message);
           DispatchMessageW(&message);
         }
+        prompt_thread_id.store(0);
         prompt_available.store(false);
       }
       KillTimer(nullptr, timer);
     }
   }  // namespace
+
+  bool open_main_window() {
+    const auto thread_id = prompt_thread_id.load();
+    return thread_id != 0 && PostThreadMessageW(thread_id, open_main_window_message, 0, 0);
+  }
 
   /**
    * @brief Windows prompt thread state.
@@ -513,9 +531,7 @@ namespace office {
       if (slot.uuid.empty()) {
         return;
       }
-      std::thread([uuid = std::move(slot.uuid), enable = !slot.enabled]() {
-        set_client_access(uuid, enable);
-      }).detach();
+      request_client_access(std::move(slot.uuid), !slot.enabled);
     }
 
     /**
@@ -527,12 +543,7 @@ namespace office {
       if (slot.uuid.empty()) {
         return;
       }
-      std::thread([slot = std::move(slot)]() {
-        const auto text = utf_utils::from_utf8(std::format("删除「{}」的授权？\n删除后该设备需要重新配对才能连接。", slot.name));
-        if (MessageBoxW(nullptr, text.c_str(), L"Sunshine", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST | MB_SETFOREGROUND) == IDYES) {
-          delete_client(slot.uuid);
-        }
-      }).detach();
+      request_delete_client(std::move(slot.uuid), std::move(slot.name));
     }
   }  // namespace
 
@@ -567,7 +578,7 @@ namespace office {
       }
       const auto &device = devices[i];
       slots[i] = {device.uuid, device.name, device.enabled};
-      const auto name = device.name.empty() || device.name == "-" ? std::format("设备 {}", i + 1) : device.name;
+      const auto name = device_display_name(device.name, i);
       labels[i] = device.enabled ? name : std::format("{}（已禁用）", name);
       menus[i][0].text = device.enabled ? "禁用" : "启用";
       tray_devices_menu[i].text = labels[i].c_str();
@@ -582,7 +593,7 @@ namespace office {
       tray_devices_menu[next].submenu = nullptr;
       ++next;
     } else if (devices.size() > tray_device_slots) {
-      tray_devices_menu[next].text = "更多设备请在 Web 界面管理";
+      tray_devices_menu[next].text = "更多设备请在主窗口管理";
       tray_devices_menu[next].disabled = 1;
       tray_devices_menu[next].submenu = nullptr;
       ++next;
@@ -595,9 +606,11 @@ namespace office {
   }
 
   void tray_confirm_cb([[maybe_unused]] struct tray_menu *item) {
-    std::thread([enable = !confirm_connections.load()]() {
-      set_confirm_connections(enable, true);
-    }).detach();
+    request_confirm_connections(!confirm_connections.load());
+  }
+
+  void tray_open_main_window_cb([[maybe_unused]] struct tray *tray) {
+    open_desk_ui();
   }
   #endif
 }  // namespace office

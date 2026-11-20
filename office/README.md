@@ -15,6 +15,8 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - 其他管理功能、首次账户设置和 PIN 配对保留。客户端断线恢复不由服务端改写会话迁移实现代替。
 - Windows 上收到配对请求时弹出原生「授权请求」窗口（设备名、IP、4 位验证码、允许/拒绝），不必打开网页输入 PIN；网页 PIN 入口保留。
 - 可选「每次连接需本机确认」（配置键 `desk_confirm_connections`，默认关闭）；托盘「已授权设备」子菜单可禁用/启用、删除已配对设备并立即断开其串流。详见[直连授权](CONNECTION.md)。
+- Windows 托盘图标左键打开原生「Sunshine Desk」主窗口：本机可连接地址（可复制）与端口提示、设备名称（`sunshine_name`，改后确认重启服务）、已授权设备管理、「每次连接需本机确认」开关、服务与串流状态，以及「打开高级设置（网页）」入口。右键菜单不变。详见[原生主窗口](MAIN_WINDOW.md)。
+- 日常使用不需要网页账户：上游启动时不会自动打开浏览器，配对请求有原生弹窗，点击托盘配对通知打开主窗口；网页账户只在需要高级设置时创建。
 - 串流加密默认强制：`lan_encryption_mode` 与 `wan_encryption_mode` 未显式配置时为 `2`，不支持加密的旧客户端会被拒绝。
 
 此产品限制不是对拥有系统管理员权限者的隔离措施。保留的管理配置、全局准备命令和主机操作权限仍是受信任的管理功能。
@@ -23,7 +25,7 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 
 1. 在独立干净 Windows 测试机上，从本项目 Windows CI 的 `build-Windows-AMD64` 工件取得 MSI。核对构建提交与 SHA256。CI 只上传工件，不发布发行版，不使用上游签名密钥。
 2. 可运行 `office/windows/Install-Office.ps1 -InstallerPath <MSI文件> -ExpectedSha256 <经核对的哈希>`，先加 `-WhatIf` 查看动作。脚本检测已有 Sunshine 服务或进程即拒绝，不停止服务、不重启。安装包沿用上游 MSI 行为；这不是新的安装器。
-3. 启动后在本机浏览器打开 Sunshine 管理页面，按原流程设置唯一管理账户，再用 Moonlight Desk 发起 PIN 配对并在服务端批准。不要把账户、PIN、证书私钥或已配对状态放入仓库、日志附件或共享安装包。不得共享其他用户的配置目录。
+3. 启动后左键单击托盘图标打开主窗口，把其中的本机地址输入 Moonlight Desk 发起配对，在弹出的「授权请求」窗口里核对验证码并允许。需要高级设置时再从主窗口「打开高级设置（网页）」，按原流程设置唯一管理账户。不要把账户、PIN、证书私钥或已配对状态放入仓库、日志附件或共享安装包。不得共享其他用户的配置目录。
 4. 若需要无头显示器，采用可信来源发布且具有有效 Windows 驱动签名的 VDD 安装包，按其安装说明安装；由 Windows 校验签名。不要启用测试签名、关闭签名校验或把未知 INF 加入驱动库。本项目暂不绑定、下载、打包或自动安装某个 VDD，也没有验证具体型号兼容性。先用实体显示器完成基本验收，再加入 VDD。
 5. 新安装无需运行额外初始化脚本即可启用自动分辨率。仅在需要选定目标显示器或检查已有配置时，用上游 `dxgi-info.exe` 确认目标显示器标识。运行 `office/windows/Initialize-Office.ps1 -ConfigPath <现有配置> -OutputPath <新的候选文件> -DisplayId <显示器标识>`。不指定 ConfigPath 时生成最小候选配置；不指定 DisplayId 时保留原 output_name。工具只生成新文件，拒绝覆盖，不读取或更改 apps.json、配对和服务。
 6. 可选候选配置将 `dd_configuration_option` 设为 `ensure_active`，将分辨率和刷新率设为 `auto`。复核候选后，在停止测试机串流时备份原配置到本机私有目录，再由管理员按上游配置流程应用。不要在仓库保存备份。工具不自动重启服务。
@@ -64,9 +66,10 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - 本地独立策略测试：`clang++ -std=c++17 -Wall -Wextra -Werror -I. office/tests/policy.cpp -o <临时测试程序>`，运行生成程序。
 - `OfficeCursorTlsTest` 通过生产 TLS 服务器与认证回调测试已配对幂等 set、未知/禁用/解除配对拒绝、无证书及明文拒绝；使用环回临时端口和临时合成证书，不启动真实主机服务。
 - 完整 GoogleTest 包含 `tests/unit/test_office.cpp` 的固定运行目录与 cursor 参数测试，以及 `test_office_display_scale.cpp` 的 DPI 边界、严格请求、目标令牌、失败与读回测试。`OfficeDisplayScaleTlsTest` 使用生产 TLS 服务和 synthetic DPI backend，验证已配对读取/POST 及未知、禁用、解除配对、缺证书和明文拒绝；测试不修改任何真实显示器比例。
+- `test_office_main_window.cpp` 覆盖主窗口纯逻辑（地址筛选与格式化、设备行、名称校验与重启规则、单键原子写回）；`test_system_tray.cpp` 断言 Windows 托盘左键回调。
 - `test_office_authorization.cpp` 覆盖确认状态机（假时钟）、协议处理、launch 闸门、弹窗规则（假窗口后端）、配置解析与写回、加密默认值；`OfficeConnectRequestTlsTest` 经生产 TLS 服务验证 connect-request 与无许可 launch 的 403。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
-- 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、配对弹窗与每次连接确认弹窗、托盘禁用/删除设备、强制加密下的 Moonlight Desk 连接、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。
+- 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、配对弹窗与每次连接确认弹窗、托盘禁用/删除设备、原生主窗口（托盘左键、改名重启、服务模式会话）、强制加密下的 Moonlight Desk 连接、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。
 
 详见[验证结果和工件哈希](VALIDATION.md)、[架构与上游维护](UPSTREAM.md)和[可回滚试用方案](TRIAL.md)。

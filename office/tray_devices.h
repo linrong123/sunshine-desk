@@ -18,7 +18,7 @@
   #include <tray.h>
 
 namespace office {
-  inline constexpr std::size_t tray_device_slots = 16;  ///< Paired devices listed in the tray; more are managed from the web UI.
+  inline constexpr std::size_t tray_device_slots = 16;  ///< Paired devices listed in the tray; the main window lists all of them.
   inline constexpr std::size_t tray_devices_menu_size = tray_device_slots + 2;  ///< Device entries, an overflow or empty note, and the terminator.
 
   /**
@@ -57,5 +57,15 @@ namespace office {
    * @param item Clicked menu item.
    */
   void tray_confirm_cb(struct tray_menu *item);
+
+  /**
+   * @brief Tray left-click callback that opens the Sunshine Desk main window.
+   *
+   * Runs on the tray thread and only posts a request to the prompt thread; falls back to the web
+   * UI when the main window is unavailable. The right-click menu is unaffected.
+   *
+   * @param tray Clicked tray.
+   */
+  void tray_open_main_window_cb(struct tray *tray);
 }  // namespace office
 #endif

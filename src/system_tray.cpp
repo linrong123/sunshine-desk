@@ -82,6 +82,7 @@
   #include "thread_safe.h"
   #ifdef _WIN32
     #include "office/authorization.h"
+    #include "office/main_window.h"
     #include "office/tray_devices.h"
     #include "platform/windows/utf_utils.h"
   #endif
@@ -296,6 +297,8 @@ namespace system_tray {
     .tooltip = PROJECT_NAME,
   #ifdef __APPLE__
     .cb = tray_native_menu_click_cb,
+  #elif defined(_WIN32)
+    .cb = office::tray_open_main_window_cb,  // Sunshine Desk: left-click opens the native main window.
   #endif
     .menu =
       (struct tray_menu[]) {
@@ -937,7 +940,11 @@ namespace system_tray {
     tray.notification_icon = tray.allIconPaths[1];
     tray.tooltip = PROJECT_NAME;
     tray.notification_cb = []() {
+  #ifdef _WIN32
+      office::open_pin_ui();  // Sunshine Desk: native prompts handle the PIN when available.
+  #else
       launch_ui("/pin");
+  #endif
     };
     tray_update(&tray);
   }
