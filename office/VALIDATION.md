@@ -116,7 +116,7 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 分支 `feat/clipboard`：已配对 HTTPS 上的 `GET/POST /office/clipboard`，`serverinfo` 宣告 `OfficeClipboard=1`（仅 Windows），主窗口新增「允许剪贴板同步」开关（默认开）。协议、授权与限制见[文本剪贴板同步](CLIPBOARD.md)。
 
 - 新增 `tests/unit/test_office_clipboard.cpp`（换行转换、base64 向量、严格 UTF-8、授权判定、假 backend 请求处理、配置解析与持久化）和 `OfficeClipboardTlsTest`（生产 TLS 服务 + 假 backend：串流中读写、未串流/开关关闭 403、未知/禁用证书 401、超大 `Content-Length` 读 body 前即断开连接）。测试不触碰真实剪贴板。
-- CI：待填。
+- CI：run 44749813127（提交 71236fc1）通过：office-policy 成功；Windows-AMD64 构建打包成功，GoogleTest 1032 个用例中 1020 个通过、其余跳过、无失败，剪贴板相关 17 个用例全部通过。此前 44741815096（测试转义）与 44744158772（配置夹具、超大请求断言）失败，分别由 06ec2ccf、71236fc1 修复。
 - 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译，非 Windows 返回 501 的路径只做了代码审阅。
 
 待实机验收（不能由 CI 推出）：
