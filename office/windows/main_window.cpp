@@ -29,6 +29,7 @@
 
   // local includes
   #include "office/authorization.h"
+  #include "office/clipboard.h"
   #include "office/main_window.h"
   #include "office/windows/main_window.h"
   #include "src/config.h"
@@ -52,7 +53,7 @@ namespace office {
     constexpr auto main_class_name = L"SunshineDeskMain";  ///< Window class of the main window.
     constexpr auto icon_resource_name = L"SuperDuperAmazing";  ///< Application icon in src/platform/windows/windows.rc.
     constexpr int client_width = 480;  ///< Client width at 96 DPI.
-    constexpr int client_height = 484;  ///< Client height at 96 DPI.
+    constexpr int client_height = 510;  ///< Client height at 96 DPI.
     constexpr unsigned name_refresh_ticks = 4;  ///< Ticks between re-reading the saved device name.
     constexpr unsigned address_refresh_ticks = 10;  ///< Ticks between re-enumerating network addresses.
     constexpr unsigned copied_feedback_ticks = 4;  ///< Ticks the "已复制" button text stays.
@@ -86,6 +87,7 @@ namespace office {
       toggle_id,  ///< Disable / enable button.
       remove_id,  ///< Delete authorization button.
       confirm_id,  ///< Per-connection approval check box.
+      clipboard_id,  ///< Clipboard synchronization check box.
       advanced_id,  ///< Open the web UI button.
     };
 
@@ -227,6 +229,12 @@ namespace office {
     }).detach();
   }
 
+  void request_clipboard_sync(const bool enabled) {
+    std::thread([enabled]() {
+      set_clipboard_sync(enabled, true);
+    }).detach();
+  }
+
   /**
    * @brief Main window state; touched only on the prompt thread.
    */
@@ -247,6 +255,7 @@ namespace office {
     HWND toggle {};  ///< Disable / enable button.
     HWND remove {};  ///< Delete authorization button.
     HWND confirm {};  ///< Per-connection approval check box.
+    HWND clipboard {};  ///< Clipboard synchronization check box.
     HWND status {};  ///< Service status line.
 
     int http_port {default_http_port};  ///< GameStream HTTP port.
@@ -330,12 +339,13 @@ namespace office {
       toggle = add_child(L"BUTTON", L"禁用", WS_TABSTOP | BS_PUSHBUTTON, 368, 258, 96, 28, toggle_id);
       remove = add_child(L"BUTTON", L"删除授权", WS_TABSTOP | BS_PUSHBUTTON, 368, 292, 96, 28, remove_id);
       confirm = add_child(L"BUTTON", L"每次连接需本机确认", WS_TABSTOP | BS_CHECKBOX, 16, 362, 448, 22, confirm_id);
+      clipboard = add_child(L"BUTTON", L"允许剪贴板同步", WS_TABSTOP | BS_CHECKBOX, 16, 388, 448, 22, clipboard_id);
 
-      add_child(L"STATIC", L"服务状态", label, 16, 392, 448, 20, 0, true);
-      status = add_child(L"STATIC", L"", label | SS_ENDELLIPSIS, 16, 414, 448, 20, 0);
+      add_child(L"STATIC", L"服务状态", label, 16, 418, 448, 20, 0, true);
+      status = add_child(L"STATIC", L"", label | SS_ENDELLIPSIS, 16, 440, 448, 20, 0);
 
-      add_child(L"BUTTON", L"打开高级设置（网页）", WS_TABSTOP | BS_PUSHBUTTON, 16, 444, 180, 30, advanced_id);
-      add_child(L"BUTTON", L"关闭", WS_TABSTOP | BS_PUSHBUTTON, 384, 444, 80, 30, IDCANCEL);
+      add_child(L"BUTTON", L"打开高级设置（网页）", WS_TABSTOP | BS_PUSHBUTTON, 16, 470, 180, 30, advanced_id);
+      add_child(L"BUTTON", L"关闭", WS_TABSTOP | BS_PUSHBUTTON, 384, 470, 80, 30, IDCANCEL);
 
       http_port = net::map_port(nvhttp::PORT_HTTP);
       set_text(hint, port_hint(http_port));
@@ -507,9 +517,11 @@ namespace office {
       auto current = device_rows(clients, streaming);
       set_text(status, service_status(current, certs.size() - matched.size()));
 
-      const auto checked = SendMessageW(confirm, BM_GETCHECK, 0, 0) == BST_CHECKED;
-      if (const auto enabled = confirm_connections.load(); checked != enabled) {
-        SendMessageW(confirm, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+      for (const auto &[box, value] : {std::pair {confirm, &confirm_connections}, std::pair {clipboard, &clipboard_sync}}) {
+        const auto checked = SendMessageW(box, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        if (const auto enabled = value->load(); checked != enabled) {
+          SendMessageW(box, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
       }
 
       if (!force && same_rows(current, rows)) {
@@ -720,6 +732,9 @@ namespace office {
         case confirm_id:
           request_confirm_connections(!confirm_connections.load());
           break;
+        case clipboard_id:
+          request_clipboard_sync(!clipboard_sync.load());
+          break;
         case advanced_id:
           std::thread([]() {
             launch_ui();
@@ -739,7 +754,7 @@ namespace office {
         mailbox->target = nullptr;
       }
       mailbox.reset();
-      hwnd = addresses = copy = name = apply = name_hint = devices = toggle = remove = confirm = status = nullptr;
+      hwnd = addresses = copy = name = apply = name_hint = devices = toggle = remove = confirm = clipboard = status = nullptr;
     }
 
     /**

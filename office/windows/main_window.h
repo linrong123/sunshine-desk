@@ -38,6 +38,12 @@ namespace office {
   void request_confirm_connections(bool enabled);
 
   /**
+   * @brief Turn clipboard synchronization on or off and persist it, on a worker thread.
+   * @param enabled New value of `desk_clipboard_sync`.
+   */
+  void request_clipboard_sync(bool enabled);
+
+  /**
    * @brief The Sunshine Desk main window.
    *
    * Single instance: @ref show creates the window or brings the existing one to the front. Every
