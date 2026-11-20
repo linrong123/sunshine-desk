@@ -78,4 +78,6 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
 - 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、配对弹窗与每次连接确认弹窗、托盘禁用/删除设备、原生主窗口（托盘左键、改名重启、服务模式会话）、剪贴板同步（服务模式下读写登录用户剪贴板、双端复制粘贴）、强制加密下的 Moonlight Desk 连接、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。
 
+应用与托盘图标见[图标说明](ICONS.md)。
+
 详见[验证结果和工件哈希](VALIDATION.md)、[架构与上游维护](UPSTREAM.md)和[可回滚试用方案](TRIAL.md)。

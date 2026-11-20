@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Same filled monitor and signal ribbons as tray-normal.svg. -->
+  <path fill="#14A9AD" stroke="#075761" stroke-width="0.9" fill-rule="evenodd" d="
+    M11 20 H38 Q44 20 44 26 V42 Q44 48 38 48
+    H28 V54 H33 A2.5 2.5 0 0 1 33 59 H16
+    A2.5 2.5 0 0 1 16 54 H21 V48 H11 Q5 48 5 42
+    V26 Q5 20 11 20 Z
+    M12 26 Q11 26 11 27 V40 Q11 41 12 41 H37
+    Q38 41 38 40 V27 Q38 26 37 26 Z"/>
+  <path fill="#14A9AD" stroke="#075761" stroke-width="0.9" d="
+    M38 12 A15 15 0 0 1 53 27 A3 3 0 0 1 47 27
+    A9 9 0 0 0 38 18 A3 3 0 0 1 38 12 Z
+    M38 3 A24 24 0 0 1 62 27 A3 3 0 0 1 56 27
+    A18 18 0 0 0 38 9 A3 3 0 0 1 38 3 Z"/>
+
+  <!-- Broad pause bars retain two separate stems at 16 px. -->
+  <circle cx="50" cy="48" r="12.5" fill="#C5840C" stroke="#FFFFFF" stroke-width="2"/>
+  <rect x="44" y="40" width="4" height="16" fill="#FFFFFF"/>
+  <rect x="52" y="40" width="4" height="16" fill="#FFFFFF"/>
+</svg>
