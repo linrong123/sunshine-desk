@@ -133,3 +133,21 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - 锁屏、UAC 安全桌面、切换用户时的表现（预期 503 或读到空）；剪贴板被其他程序占用时返回 503。
 - 超过 1 MiB 的文本：读取得到 `tooLarge=1`，写入被拒绝且主机剪贴板不变。
 - 另一台已配对但未串流的设备请求返回 403；未知/禁用证书返回 401。
+
+## 自适应视频 FEC（2026-11-20）
+
+分支 `feat/adaptive-fec`：按会话根据客户端 `SS_FRAME_FEC_STATUS`（`0x5502`）反馈调整视频 FEC 百分比，配置键 `desk_adaptive_fec`（默认开）与 `desk_adaptive_fec_max`（默认 60）。设计见[自适应视频 FEC](ADAPTIVE_FEC.md)。
+
+- 新增 `tests/unit/test_office_adaptive_fec.cpp`（解析、估计无偏性、控制器、超大帧退回、会话与配置）。
+- CI：run 44770799683（提交 c5c34d42）通过：office-policy 成功；Windows-AMD64 构建（`-DBUILD_WERROR=ON`）打包成功，GoogleTest 1048 个用例中 1036 个通过、12 个跳过、无失败，`OfficeAdaptiveFecTest` 16 个用例全部通过。
+- 复核修正（超大帧先退回 `fec_percentage` 再关 FEC、上限不大于下限时记 info、估计偏差说明，提交 84ea55dd）：CI run 44776341389 通过，office-policy 成功，Windows-AMD64 构建（`-DBUILD_WERROR=ON`）打包成功，GoogleTest 1049 个用例中 1037 个通过、12 个跳过、无失败，`OfficeAdaptiveFecTest` 17 个用例全部通过。
+- 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译。
+
+待实机验收（不能由 CI 推出）：
+
+- 经 Tailscale 高丢包链路串流：日志出现 `Adaptive FEC [session N]: 20% -> …`，客户端丢帧率明显低于固定 20%（基线：丢包 11%–20% 时约 58% 的帧丢弃）。
+- 网络恢复后百分比每 10 秒降 5 回到 20，日志不刷屏；局域网无丢包时只有会话开始一条日志。
+- 官方 Moonlight 与 Moonlight Desk 在百分比变化期间画面正常、无解码错误。
+- `desk_adaptive_fec = disabled` 重启服务后无相关日志，行为与上游一致。
+- 高百分比期间的大关键帧：debug 日志出现 `large frame does not fit` 时画面正常（退回下限分块）。
+- 60% 时客户端统计的线上码率增幅（预期约 1.33 倍）是否引发额外丢包。

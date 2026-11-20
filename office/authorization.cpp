@@ -21,6 +21,7 @@
 #include <boost/property_tree/ptree.hpp>
 
 // local includes
+#include "office/adaptive_fec.h"
 #include "office/authorization.h"
 #include "office/clipboard.h"
 #include "src/file_handler.h"
@@ -171,6 +172,7 @@ namespace office {
       connect_tracker().clear();
     }
     apply_clipboard_config(vars);
+    apply_adaptive_fec_config(vars);
   }
 
   namespace {

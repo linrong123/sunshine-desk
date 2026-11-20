@@ -17,6 +17,7 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - 可选「每次连接需本机确认」（配置键 `desk_confirm_connections`，默认关闭）；托盘「已授权设备」子菜单可禁用/启用、删除已配对设备并立即断开其串流。详见[直连授权](CONNECTION.md)。
 - Windows 托盘图标左键打开原生「Sunshine Desk」主窗口：本机可连接地址（可复制）与端口提示、设备名称（`sunshine_name`，改后确认重启服务）、已授权设备管理、「每次连接需本机确认」开关、服务与串流状态，以及「打开高级设置（网页）」入口。右键菜单不变。详见[原生主窗口](MAIN_WINDOW.md)。
 - 文本剪贴板同步：正在串流的已配对设备可经 `GET/POST /office/clipboard` 读写 Windows 剪贴板中的 Unicode 文本（上限 1 MiB，线上 UTF-8 + LF），`serverinfo` 宣告 `OfficeClipboard=1`；主窗口「允许剪贴板同步」开关（配置键 `desk_clipboard_sync`，默认开启）。详见[文本剪贴板同步](CLIPBOARD.md)。
+- 自适应视频 FEC：每个串流会话按客户端 `SS_FRAME_FEC_STATUS` 反馈估计丢包，在配置的 `fec_percentage` 与上限（`desk_adaptive_fec_max`，默认 60）之间动态调整 FEC 百分比，丢包时快升、恢复后慢降；客户端无需改动，`desk_adaptive_fec = disabled` 即恢复上游行为。详见[自适应视频 FEC](ADAPTIVE_FEC.md)。
 - 日常使用不需要网页账户：上游启动时不会自动打开浏览器，配对请求有原生弹窗，点击托盘配对通知打开主窗口；网页账户只在需要高级设置时创建。
 - 串流加密默认强制：`lan_encryption_mode` 与 `wan_encryption_mode` 未显式配置时为 `2`，不支持加密的旧客户端会被拒绝。
 
@@ -66,6 +67,10 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 
 `GET /office/clipboard` 返回 `sequence`、`hasText` 和 base64 的 `text`；`POST /office/clipboard` 以原始 UTF-8 为 body 写入。只有当前正在串流的那台已配对设备可用，开关关闭时返回 403；超过 1 MiB 的请求体在读入前即被拒绝（服务端直接断开连接）。仅 Windows 实现，尚未实机验收。协议、授权、换行规则与已知限制见 [CLIPBOARD.md](CLIPBOARD.md)。
 
+## 自适应视频 FEC
+
+经 Tailscale 等高丢包链路串流时，固定 20% 的 FEC 不足以恢复大部分帧。服务端用客户端已有的 `0x5502` 反馈无偏估计视频丢包率，按会话把 FEC 提到 2 × 丢包率 + 10%（取 5 的倍数，封顶 60），丢包消失后每 10 秒降 5 个百分点回到配置值。代价是线上视频流量最多增加约 1/3；尚未实机验收。算法、配置、日志、限制与回滚见 [ADAPTIVE_FEC.md](ADAPTIVE_FEC.md)。
+
 ## 验证与交接
 
 - 本地独立策略测试：`clang++ -std=c++17 -Wall -Wextra -Werror -I. office/tests/policy.cpp -o <临时测试程序>`，运行生成程序。
@@ -74,6 +79,7 @@ Windows AMD64 已由[完整 CI](https://github.com/linrong123/sunshine-desk/acti
 - `test_office_main_window.cpp` 覆盖主窗口纯逻辑（地址筛选与格式化、设备行、名称校验与重启规则、单键原子写回）；`test_system_tray.cpp` 断言 Windows 托盘左键回调。
 - `test_office_authorization.cpp` 覆盖确认状态机（假时钟）、协议处理、launch 闸门、弹窗规则（假窗口后端）、配置解析与写回、加密默认值；`OfficeConnectRequestTlsTest` 经生产 TLS 服务验证 connect-request 与无许可 launch 的 403。
 - `test_office_clipboard.cpp` 覆盖剪贴板换行转换、base64、UTF-8 校验、授权判定与请求处理（假 backend）；`OfficeClipboardTlsTest` 经生产 TLS 服务验证串流中读写、403、401 与超大请求体在读 body 前被断开，不触碰真实剪贴板。
+- `test_office_adaptive_fec.cpp` 覆盖 `0x5502` 解析、丢包估计（含模拟客户端的无偏性检验）、控制器快升/慢降/上下限/滞回/重复报告、超大帧退回下限分块、会话开关与配置解析，全部使用假时钟，不收发网络包。
 - Windows 初始化脚本测试：`pwsh -File office/tests/Initialize-Office.Tests.ps1`，只使用临时目录和合成配置，验证原文件不变、保留其他设置、候选幂等、拒绝覆盖和换行注入。
 - `.github/workflows/office-windows.yml` 在 main 的相关修改或手动运行时，复用上游 Windows AMD64 编译、MSI/ZIP 打包与全套测试；不执行生产安装。其工件是未签名测试构建，不是经过验收的发行版。
 - 仍需实机验收：MSI 干净安装/卸载、首次账户与配对、配对弹窗与每次连接确认弹窗、托盘禁用/删除设备、原生主窗口（托盘左键、改名重启、服务模式会话）、剪贴板同步（服务模式下读写登录用户剪贴板、双端复制粘贴）、强制加密下的 Moonlight Desk 连接、真实 Moonlight Desk 的权限拒绝和 cursor 画面行为、动态分辨率、VDD 模式切换/恢复、锁屏与解锁后的客户端恢复、实体显示器回退。环回 TLS 测试已通过，不能代替这些双端验收。

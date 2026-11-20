@@ -2172,6 +2172,63 @@ consent prompt for directory ACLs, so the Web UI shows setup steps for correctin
     </tr>
 </table>
 
+### desk_adaptive_fec
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Sunshine Desk only. Adapt the video FEC percentage of each stream to the packet loss reported by
+            the client. The percentage starts at <code>fec_percentage</code>, rises quickly while video packets
+            are lost, and returns slowly to <code>fec_percentage</code> once loss stops. It never exceeds
+            <code>desk_adaptive_fec_max</code>. Streams do not adapt when <code>fec_percentage</code> is
+            <code>0</code>. When disabled, streams always use <code>fec_percentage</code>.
+            @warning{Higher FEC percentages increase video bandwidth beyond the bitrate selected by the client,
+            up to about one third more at 60%.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            enabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            desk_adaptive_fec = disabled
+            @endcode</td>
+    </tr>
+</table>
+
+### desk_adaptive_fec_max
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Sunshine Desk only. Highest video FEC percentage that <code>desk_adaptive_fec</code> may use.
+            Values at or below <code>fec_percentage</code> disable adaptation.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            60
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Range</td>
+        <td colspan="2">0-100</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            desk_adaptive_fec_max = 60
+            @endcode</td>
+    </tr>
+</table>
+
 ### qp
 
 <table>

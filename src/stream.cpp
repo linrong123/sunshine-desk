@@ -27,6 +27,7 @@
 #include "input.h"
 #include "logging.h"
 #include "network.h"
+#include "office/adaptive_fec.h"
 #include "office/authorization.h"
 #include "platform/common.h"
 #include "process.h"
@@ -509,6 +510,8 @@ namespace stream {
     std::jthread videoThread;  ///< Video thread.
 
     std::chrono::steady_clock::time_point pingTimeout;  ///< Deadline for receiving the next client ping.
+
+    office::adaptive_fec_session_t adaptive_fec;  ///< Office: per-session adaptive video FEC (office/ADAPTIVE_FEC.md).
 
     safe::shared_t<broadcast_ctx_t>::ptr_t broadcast_ref;  ///< Shared broadcast context retained while the session is active.
 
@@ -1203,6 +1206,11 @@ namespace stream {
       BOOST_LOG(debug) << "type [IDX_START_B]"sv;
     });
 
+    // Office: per-block FEC feedback drives the adaptive FEC percentage (office/ADAPTIVE_FEC.md).
+    server->map(office::frame_fec_status_type, [](session_t *session, const std::string_view &payload) {
+      office::adaptive_fec_feedback(session->adaptive_fec, payload);
+    });
+
     server->map(packetTypes[IDX_LOSS_STATS], [&](session_t *session, const std::string_view &payload) {
       auto stats = (int32_t *) payload.data();
       auto count = stats[0];
@@ -1396,6 +1404,8 @@ namespace stream {
 
               send_hdr_mode(session, std::move(hdr_info));
             }
+
+            office::adaptive_fec_tick(session->adaptive_fec, now, session->launch_session_id);
           }
 
           ++pos;
@@ -1683,7 +1693,7 @@ namespace stream {
         frame_header.frame_processing_latency = 0;
       }
 
-      auto fecPercentage = config::stream.fec_percentage;
+      auto fecPercentage = office::adaptive_fec_percentage(session->adaptive_fec, config::stream.fec_percentage);
 
       // Insert space for packet headers
       auto blocksize = session->config.packetsize + MAX_RTP_HEADER_SIZE;
@@ -1695,11 +1705,14 @@ namespace stream {
       // There are 2 bits for FEC block count for a maximum of 4 FEC blocks
       constexpr auto MAX_FEC_BLOCKS = 4;
 
-      auto max_data_shards_per_fec_block = fec::max_data_shards(fecPercentage);
-
-      // Compute the number of FEC blocks needed for this frame using the block size and max shards
-      auto max_data_per_fec_block = max_data_shards_per_fec_block * blocksize;
-      auto fec_blocks_needed = (payload.size() + (max_data_per_fec_block - 1)) / max_data_per_fec_block;
+      // Compute the number of FEC blocks needed for this frame using the block size and max shards.
+      // office: an adaptive percentage that does not fit falls back to the configured fec_percentage.
+      const auto fec_fit = office::fit_fec_blocks(payload.size(), blocksize, fecPercentage, config::stream.fec_percentage, MAX_FEC_BLOCKS, fec::max_data_shards);
+      if (fec_fit.percentage != fecPercentage) {
+        BOOST_LOG(debug) << "Adaptive FEC: large frame does not fit "sv << MAX_FEC_BLOCKS << " FEC blocks at "sv << fecPercentage << "%; using "sv << fec_fit.percentage << '%';
+        fecPercentage = fec_fit.percentage;
+      }
+      auto fec_blocks_needed = fec_fit.blocks;
 
       // If the number of FEC blocks needed exceeds the protocol limit, turn off FEC for this frame.
       // For normal FEC percentages, this should only happen for enormous frames (over 800 packets at 20%).
@@ -2346,6 +2359,9 @@ namespace stream {
      * @brief Start the audio, video, and control workers for a streaming session.
      */
     int start(session_t &session, const std::string &addr_string) {
+      // Office: reset adaptive FEC before the control and video threads can see the session.
+      office::adaptive_fec_start(session.adaptive_fec, config::stream.fec_percentage, session.launch_session_id);
+
       session.input = input::alloc(session.mail, session.input_session_id);
 
       session.broadcast_ref = broadcast.ref();
