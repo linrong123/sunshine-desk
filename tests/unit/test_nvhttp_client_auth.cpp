@@ -625,8 +625,7 @@ namespace {
       return {200, ++sequence};
     }
 
-    std::string text {"host
-text"};  ///< Current clipboard text with Windows line endings.
+    std::string text {"host\r\ntext"};  ///< Current clipboard text with Windows line endings.
     std::uint32_t sequence {7};  ///< Synthetic clipboard sequence number.
     int reads {};  ///< Number of reads that reached the backend.
     int writes {};  ///< Number of writes that reached the backend.
@@ -678,18 +677,15 @@ TEST_F(OfficeClipboardTlsTest, StreamingClientReadsAndWrites) {
   ASSERT_EQ(read.get<int>("root.<xmlattr>.status_code"), 200);
   EXPECT_EQ(read.get<int>("root.sequence"), 7);
   EXPECT_EQ(read.get<int>("root.hasText"), 1);
-  EXPECT_EQ(read.get<std::string>("root.text"), office::base64_encode("host
-text"));
+  EXPECT_EQ(read.get<std::string>("root.text"), office::base64_encode("host\ntext"));
 
-  const auto written = request_xml("/office/clipboard", "paired", "POST", "client
-text");
+  const auto written = request_xml("/office/clipboard", "paired", "POST", "client\ntext");
   ASSERT_EQ(written.get<int>("root.<xmlattr>.status_code"), 200);
   EXPECT_EQ(written.get<int>("root.sequence"), 8);
-  EXPECT_EQ(fake->text, "client
-text");
+  EXPECT_EQ(fake->text, "client\r\ntext");
 
   EXPECT_EQ(request_xml("/office/clipboard", "paired", "POST", std::string(office::clipboard_max_bytes, 'x')).get<int>("root.<xmlattr>.status_code"), 200);
-  EXPECT_EQ(request_xml("/office/clipboard", "paired", "POST", "À¯").get<int>("root.<xmlattr>.status_code"), 400);
+  EXPECT_EQ(request_xml("/office/clipboard", "paired", "POST", "\xc0\xaf").get<int>("root.<xmlattr>.status_code"), 400);
   EXPECT_EQ(request_status("/office/clipboard?x=1"), 400);
   EXPECT_EQ(fake->writes, 2);
 }
