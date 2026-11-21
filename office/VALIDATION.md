@@ -143,11 +143,16 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 - 复核修正（超大帧先退回 `fec_percentage` 再关 FEC、上限不大于下限时记 info、估计偏差说明，提交 84ea55dd）：CI run 44776341389 通过，office-policy 成功，Windows-AMD64 构建（`-DBUILD_WERROR=ON`）打包成功，GoogleTest 1049 个用例中 1037 个通过、12 个跳过、无失败，`OfficeAdaptiveFecTest` 17 个用例全部通过。
 - 本机没有 C++ 编译器，编译与 GoogleTest 只在 CI 中运行；Linux 与 macOS 未编译。
 
-待实机验收（不能由 CI 推出）：
+实机验收（2026-11-20，合并提交 4f576f81 切换部署到本机，Mac 上的 Moonlight Desk 经 Tailscale IPv6 直连串流）：
 
-- 经 Tailscale 高丢包链路串流：日志出现 `Adaptive FEC [session N]: 20% -> …`，客户端丢帧率明显低于固定 20%（基线：丢包 11%–20% 时约 58% 的帧丢弃）。
-- 网络恢复后百分比每 10 秒降 5 回到 20，日志不刷屏；局域网无丢包时只有会话开始一条日志。
-- 官方 Moonlight 与 Moonlight Desk 在百分比变化期间画面正常、无解码错误。
+- 通过：会话开始记 `Adaptive FEC [session 1]: 20% to 60%`，随后按测得丢包升档，如 `20% -> 25% (loss 6.8% over 222 packets)`、`25% -> 35% (loss 10.5% …)`、`35% -> 40% (loss 14.1% …)`、`40% -> 45% (loss 15.5% …)`；丢包减少时每 10 秒降 5，没有刷屏。
+- 通过：测得丢包仍是 7%–16%，与基线链路相当，但客户端统计的 "Frames dropped by your network connection" 只在短时间内达到 10%–20% 多，多数时间是 0%，而基线固定 20% 时约为 58%。
+- 已观察到的限制：客户端只在出现丢包时上报，所以静止画面时窗口内没有样本，日志会出现 `loss 0.0% over 0 packets`，百分比会像网络已恢复那样逐步下降，画面一动起来再在约 1 秒内升回去。动起来的第一下可能短暂丢帧，见 [ADAPTIVE_FEC.md](ADAPTIVE_FEC.md) 的已知限制。
+
+仍待实机验收（不能由 CI 推出）：
+
+- 局域网无丢包时只有会话开始一条日志。
+- 官方 Moonlight 在百分比变化期间画面正常、无解码错误（Moonlight Desk 已正常）。
 - `desk_adaptive_fec = disabled` 重启服务后无相关日志，行为与上游一致。
 - 高百分比期间的大关键帧：debug 日志出现 `large frame does not fit` 时画面正常（退回下限分块）。
 - 60% 时客户端统计的线上码率增幅（预期约 1.33 倍）是否引发额外丢包。
