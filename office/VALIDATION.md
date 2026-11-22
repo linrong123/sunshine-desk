@@ -161,7 +161,7 @@ TLS 组使用生产服务器类型和认证回调、环回临时端口及临时�
 
 - 问题：Mac 经 Tailscale IPv6 直连串流（RTT 约 155 ms，空闲丢包约 7.5%，串流时主机估计 15–20%）时经常断线。主机日志是 `CLIENT DISCONNECTED`（ENet 断开，不是 `Ping Timeout`），之前有 6–12 秒的 “Waiting for IDR frame”。在 Mac 上连续 ping 主机约 85 秒，其中有一次 6.2 秒的完全中断。自适应 FEC 只能补零散丢包，补不了这种整段中断。主机侧 ENet 默认约 5 秒超时，比客户端的 10 秒短，见 [CONNECTION.md](CONNECTION.md#控制流超时)。
 - 修复：连接建立时把主机侧控制流对端超时设为与客户端相同的 2 / 10000 / 10000。
-- 自动测试：`office/tests/policy.cpp` 静态断言两个常量与客户端一致。本机没有 C++ 编译器，编译以 CI 为准。
+- 自动测试：`office/tests/policy.cpp` 静态断言两个常量与客户端一致。本机没有 C++ 编译器，编译以 CI 为准：Desk Windows validation run 45024097702 通过（office-policy、windows-package / Windows-AMD64）。
 
 ### 待实机验收
 
