@@ -29,6 +29,7 @@
 #include "network.h"
 #include "office/adaptive_fec.h"
 #include "office/authorization.h"
+#include "office/policy.h"
 #include "platform/common.h"
 #include "process.h"
 #include "stream.h"
@@ -788,6 +789,8 @@ namespace stream {
           break;
         case ENET_EVENT_TYPE_CONNECT:
           BOOST_LOG(info) << "CLIENT CONNECTED"sv;
+          // Office: tolerate the same blackout as the client before dropping the session (office/CONNECTION.md).
+          enet_peer_timeout(event.peer, office::control_timeout_limit, office::control_timeout_ms, office::control_timeout_ms);
           break;
         case ENET_EVENT_TYPE_DISCONNECT:
           BOOST_LOG(info) << "CLIENT DISCONNECTED"sv;

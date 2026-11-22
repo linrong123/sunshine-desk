@@ -28,6 +28,16 @@ namespace office {
   inline constexpr int default_encryption_mode = 2;
 
   /**
+   * @brief Control-stream ENet peer timeout limit, matching Moonlight's `enet_peer_timeout(peer, 2, 10000, 10000)`.
+   *
+   * With ENet defaults (limit 32, minimum 5 s) the host dropped the peer after about 5 s without
+   * acknowledgements while the client keeps it for 10 s, so 5-10 s blackouts on lossy long-haul links
+   * ended sessions from the host side (office/CONNECTION.md).
+   */
+  inline constexpr unsigned control_timeout_limit = 2;
+  inline constexpr unsigned control_timeout_ms = 10000;  ///< Control-stream ENet minimum and maximum peer timeout.
+
+  /**
    * @brief Validate the explicit visibility parameter without changing cursor state.
    * @tparam Query Associative query container preserving duplicate keys.
    * @param args Parsed query parameters, including duplicate keys.

@@ -30,4 +30,5 @@ int main() {
   assert(show.has_value() && *show);
   cursor.store(*show);
   assert(cursor.load());
+  static_assert(office::control_timeout_limit == 2 && office::control_timeout_ms == 10000);  // Moonlight's control-stream timeout.
 }

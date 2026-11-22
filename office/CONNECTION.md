@@ -83,6 +83,12 @@
 - HTTPS 处理线程：读写确认状态机（内部加锁），不直接操作窗口；窗口通过下一次轮询与状态同步。
 - 托盘线程：只读写托盘菜单存储和设备槽（各自加锁），不等待网络或文件 I/O。
 
+## 控制流超时
+
+客户端（moonlight-common-c）对控制流 ENet 对端调用 `enet_peer_timeout(peer, 2, 10000, 10000)`：可靠包 10 秒没有确认才断开。上游 Sunshine 不设置，ENet 默认 limit 32、最小 5 秒、最大 30 秒。ENet 重传按 RTO 线性退避（RTO 约为 RTT 加 4 倍抖动），在约 155 ms 的长途链路上重传次数很快就超过 limit，所以主机侧大约 5 秒没有确认就会断开。结果是 5–10 秒的网络中断由主机先断开会话，主机日志记为 `CLIENT DISCONNECTED`，客户端记为 `unexpected disconnect event`，而客户端本来还能等。
+
+办公版在 `ENET_EVENT_TYPE_CONNECT` 时用 `office::control_timeout_limit` / `office::control_timeout_ms`（`office/policy.h`）把主机侧设为与客户端相同的 2 / 10000 / 10000，两端容忍同样长的中断。超过 10 秒的中断仍会断开，由客户端的自动重连恢复。`ping_timeout`（默认 10 秒）不变。回滚：撤销该提交并重新部署。
+
 ## 已知限制
 
 - 弹窗与托盘管理只在 Windows 实现；其他平台编译为空实现，仍走上游网页 PIN 流程，确认开关不生效。
